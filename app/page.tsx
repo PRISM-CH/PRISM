@@ -1,5 +1,5 @@
-import { getFederationData } from '../lib/supabase'
-import ScorecardClient from '../components/ScorecardClient'
+import { getFederationData } from '@/lib/supabase'
+import ScorecardClient from '@/app/components/ScorecardClient'
 
 export const revalidate = 3600
 
