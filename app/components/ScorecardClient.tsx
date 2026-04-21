@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
-import type { Federation, Pillar, Assessment } from '../lib/supabase'
+import type { Federation, Pillar, Assessment } from '../../lib/supabase'
+
 
 type Props = {
   data: {
