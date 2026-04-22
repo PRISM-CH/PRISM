@@ -12,54 +12,28 @@ const supabase = createClient(
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Federation = {
-  id: string
-  name: string
-  abbreviation: string
-  hq_country: string
-  founding_year: number
-  ioc_recognized: boolean
-  sport: string
-  n_member_federations: number
-  n_competitions_per_year: number
-  global_fans_millions: number
-  economic_impact_bn_eur: number
+  id: string; name: string; abbreviation: string; hq_country: string
+  founding_year: number; ioc_recognized: boolean; sport: string
+  n_member_federations: number; n_competitions_per_year: number
+  global_fans_millions: number; economic_impact_bn_eur: number
 }
 
 type Objective = {
-  id: string
-  pillar_id: string
-  name: string
-  description: string
-  score: number
-  benchmark_score: number
-  trend_note: string
-  evidence: string[]
-  display_order: number
+  id: string; pillar_id: string; name: string; description: string
+  score: number; benchmark_score: number; trend_note: string
+  evidence: string[]; display_order: number
 }
 
 type Pillar = {
-  id: string
-  name: string
-  slug: string
-  description: string
-  icon: string
-  color: string
-  display_order: number
-  objectives: Objective[]
+  id: string; name: string; slug: string; description: string
+  icon: string; color: string; display_order: number; objectives: Objective[]
 }
 
 type Assessment = {
-  overall_score: number
-  grade: string
-  assessment_year: number
-  methodology_version: string
+  overall_score: number; grade: string; assessment_year: number; methodology_version: string
 }
 
-type ScorecardData = {
-  federation: Federation
-  pillars: Pillar[]
-  assessment: Assessment
-}
+type ScorecardData = { federation: Federation; pillars: Pillar[]; assessment: Assessment }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -89,15 +63,7 @@ function AnimatedNumber({ target }: { target: number }) {
 function Bar({ score, color, height = 4 }: { score: number; color: string; height?: number }) {
   return (
     <div style={{ background: 'var(--border)', borderRadius: 99, height, overflow: 'hidden', marginTop: 6 }}>
-      <div
-        style={{
-          width: `${score}%`,
-          height: '100%',
-          background: color,
-          borderRadius: 99,
-          transition: 'width 0.6s ease',
-        }}
-      />
+      <div style={{ width: `${score}%`, height: '100%', background: color, borderRadius: 99, transition: 'width 0.6s ease' }} />
     </div>
   )
 }
@@ -109,22 +75,13 @@ function LoadingState() {
         Loading scorecard…
       </div>
       {[80, 120, 200].map((h, i) => (
-        <div
-          key={i}
-          style={{
-            background: 'var(--surface2)',
-            borderRadius: 12,
-            height: h,
-            marginBottom: 12,
-            animation: 'pulse 1.5s ease-in-out infinite',
-          }}
-        />
+        <div key={i} style={{ background: 'var(--surface2)', borderRadius: 12, height: h, marginBottom: 12 }} />
       ))}
     </div>
   )
 }
 
-// ─── Federation Carousel ──────────────────────────────────────────────────────
+// ─── Federation Carousel (NOW DYNAMIC) ────────────────────────────────────────
 
 function FederationCarousel({
   index,
@@ -153,94 +110,37 @@ function FederationCarousel({
   if (!federations.length) return null
 
   return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 0,
-        background: 'var(--surface)',
-        border: '0.5px solid var(--border)',
-        borderRadius: 10,
-        overflow: 'hidden',
-        userSelect: 'none',
-      }}
-    >
-      <CarouselArrow dir="left" onClick={() => go('left')} />
+    <div style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: 'var(--surface)', border: '0.5px solid var(--border)',
+      borderRadius: 10, overflow: 'hidden'
+    }}>
+      <button onClick={() => go('left')} style={{ width: 36 }}>‹</button>
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          padding: '6px 20px',
-          minWidth: 96,
-        }}
-      >
-        {/* dots */}
-        <div style={{ display: 'flex', gap: 5 }}>
+      <div style={{ padding: '6px 20px', textAlign: 'center' }}>
+        <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
           {federations.map((fed, i) => (
             <button
               key={fed}
               onClick={() => onNavigate(i)}
               style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                border: 'none',
-                padding: 0,
-                background: i === index ? 'var(--text)' : 'var(--border)',
-                transform: i === index ? 'scale(1.35)' : 'scale(1)',
-                cursor: 'pointer',
+                width: 6, height: 6, borderRadius: '50%',
+                background: i === index ? '#000' : '#ccc'
               }}
             />
           ))}
         </div>
 
-        {/* label */}
-        <div
-          style={{
-            fontFamily: 'sans-serif',
-            fontSize: 15,
-            fontWeight: 700,
-            color: 'var(--text)',
-            textAlign: 'center',
-          }}
-        >
-          {federations[index]}
-        </div>
-
-        {/* counter */}
-        <div style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)' }}>
-          {index + 1} / {federations.length}
-        </div>
+        <div style={{ fontWeight: 700 }}>{federations[index]}</div>
+        <div style={{ fontSize: 10 }}>{index + 1} / {federations.length}</div>
       </div>
 
-      <CarouselArrow dir="right" onClick={() => go('right')} />
+      <button onClick={() => go('right')} style={{ width: 36 }}>›</button>
     </div>
   )
 }
 
-function CarouselArrow({ dir, onClick }: { dir: 'left' | 'right'; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: 36,
-        height: 36,
-        border: 'none',
-        background: 'var(--surface)',
-        borderLeft: dir === 'right' ? '0.5px solid var(--border)' : undefined,
-        borderRight: dir === 'left' ? '0.5px solid var(--border)' : undefined,
-        cursor: 'pointer',
-      }}
-    >
-      {dir === 'left' ? '‹' : '›'}
-    </button>
-  )
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 export default function ScorecardClient() {
   const [federations, setFederations] = useState<string[]>([])
@@ -251,7 +151,7 @@ export default function ScorecardClient() {
   const [error, setError] = useState<string | null>(null)
   const [activeIdx, setActiveIdx] = useState(0)
 
-  // ── Bootstrap federations ─────────────────────────────
+  // ── Bootstrap federations ──
   useEffect(() => {
     supabase
       .from('federations')
@@ -262,7 +162,7 @@ export default function ScorecardClient() {
       })
   }, [])
 
-  // ── Load scorecard ────────────────────────────────────
+  // ── Load scorecard ──
   useEffect(() => {
     if (!federations.length) return
 
@@ -275,16 +175,14 @@ export default function ScorecardClient() {
       setActiveIdx(0)
 
       try {
-        const { data: fedRows, error: fedErr } = await supabase
+        const { data: fedRows } = await supabase
           .from('federations')
           .select('*')
           .eq('abbreviation', abbr)
           .limit(1)
 
-        if (fedErr) throw new Error(fedErr.message)
-
         const federation = fedRows?.[0]
-        if (!federation) throw new Error(`No data found for ${abbr}`)
+        if (!federation) throw new Error('No federation')
 
         const { data: pillarsRaw } = await supabase
           .from('pillars')
@@ -312,7 +210,7 @@ export default function ScorecardClient() {
           .limit(1)
 
         const assessment = assessmentRows?.[0]
-        if (!assessment) throw new Error(`No assessment found for ${abbr}`)
+        if (!assessment) throw new Error('No assessment')
 
         setData({ federation, pillars: pillarsWithObj, assessment })
       } catch (e: any) {
@@ -325,7 +223,7 @@ export default function ScorecardClient() {
     load()
   }, [fedIdx, federations])
 
-  // ── Guard ─────────────────────────────────────────────
+  // ── Guard ──
   if (federations.length === 0) return <LoadingState />
 
   const carousel = (
@@ -346,7 +244,7 @@ export default function ScorecardClient() {
   if (error || !data) return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem' }}>
       {carousel}
-      <div>{error || 'No data'}</div>
+      <div>{error}</div>
     </div>
   )
 
@@ -360,24 +258,80 @@ export default function ScorecardClient() {
     Benchmark: 70,
   }))
 
+  const activePillar = pillars[activeIdx]
+
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem' }}>
-      {carousel}
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem 4rem' }}>
 
-      <h1>{federation.name}</h1>
+      {/* HEADER */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: 8 }}>{carousel}</div>
 
-      <div>
-        <AnimatedNumber target={overallScore} /> / 100
+        <h1>{federation.name}</h1>
+
+        <p style={{ fontSize: 13 }}>
+          {federation.sport} · {federation.founding_year} · {federation.hq_country}
+        </p>
+
+        <div style={{ fontSize: 48 }}>
+          <AnimatedNumber target={overallScore} /> / 100
+        </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={280}>
-        <RadarChart data={radarData}>
-          <PolarGrid />
-          <PolarAngleAxis dataKey="name" />
-          <Radar dataKey={abbr} stroke="#378ADD" fill="#378ADD" />
-          <Tooltip />
-        </RadarChart>
-      </ResponsiveContainer>
+      {/* STATS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
+        <div>{federation.n_member_federations}</div>
+        <div>{federation.n_competitions_per_year}</div>
+        <div>{federation.global_fans_millions}</div>
+        <div>{federation.economic_impact_bn_eur}</div>
+      </div>
+
+      {/* PILLARS */}
+      <div style={{ display: 'grid', gap: 10 }}>
+        {pillars.map((p, i) => {
+          const avg = Math.round(p.objectives.reduce((a, o) => a + o.score, 0) / (p.objectives.length || 1))
+
+          return (
+            <button key={p.id} onClick={() => setActiveIdx(i)}>
+              <div>{p.icon} {p.name}</div>
+              <div>{avg}</div>
+              <Bar score={avg} color={p.color} />
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ACTIVE */}
+      {activePillar && (
+        <div>
+          <h2>{activePillar.name}</h2>
+
+          {activePillar.objectives.map(obj => (
+            <div key={obj.id}>
+              <div>{obj.name}</div>
+              <div>{obj.score}</div>
+              <Bar score={obj.score} color={scoreColor(obj.score)} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* RADAR */}
+      <div>
+        <ResponsiveContainer width="100%" height={280}>
+          <RadarChart data={radarData}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey="name" />
+            <Radar dataKey={abbr} stroke="#378ADD" fill="#378ADD" />
+            <Tooltip />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* FOOTER */}
+      <div style={{ fontSize: 11, marginTop: 20 }}>
+        PRISM methodology — federation governance & performance scoring system
+      </div>
     </div>
   )
 }
