@@ -11,7 +11,18 @@ const supabase = createClient(
 
 // ─── Federation carousel config ───────────────────────────────────────────────
 
-const FEDERATIONS = ['FEI', 'WA', 'WAQ', 'UIPM', 'ISSF','FITA'] as const
+const FEDERATIONS = [
+  'BWF', 'CIPS', 'CMAS', 'FAI', 'FEI', 'FIA', 'FIAS', 'FIB', 'FIBA', 'FIDE',
+  'FIE', 'FIFA', 'FIH', 'FIK', 'FIL', 'FIM', 'FIP', 'FIPV', 'FIS', 'FISA',
+  'FISO', 'FISU', 'FITA', 'FITEQ', 'FIVB', 'IBF', 'IBSF', 'IBU', 'ICC', 'ICF',
+  'ICU', 'IDBF', 'IFA', 'IFAF', 'IFBB', 'IFF', 'IFI', 'IFMA', 'IFS', 'IFSC',
+  'IGF', 'IHF', 'IIHF', 'IJF', 'IKF', 'ILSF', 'IOF', 'IPF', 'IRF', 'ISA',
+  'ISMF', 'ISSF', 'ISTAF', 'ISU', 'ITF', 'ITTF', 'IWF', 'IWUF', 'IWWF', 'JJIF',
+  'PADELFIP', 'RAFT', 'TRI', 'TWIF', 'UCI', 'UIAA', 'UIM', 'UIPM', 'UWW',
+  'WA', 'WAF', 'WAKO', 'WAQ', 'WB', 'WBF', 'WBSC', 'WCBS', 'WCF', 'WDF',
+  'WDSF', 'WFDF', 'WG', 'WKF', 'WL', 'WMF', 'WN', 'WPBF', 'WR', 'WS',
+  'WSF', 'WSK', 'WT',
+] as const
 type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0 // FEI
 
