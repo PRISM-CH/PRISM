@@ -11,7 +11,7 @@ const supabase = createClient(
 
 // ─── Federation carousel config ───────────────────────────────────────────────
 
-const FEDERATIONS = ['FEI', 'WA', 'WAQ', 'UIPM'] as const
+const FEDERATIONS = ['FEI', 'WA', 'WAQ', 'UIPM', 'ISSF'] as const
 type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0 // FEI
 
