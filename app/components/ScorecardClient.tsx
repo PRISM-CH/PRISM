@@ -2,14 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import {
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts'
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -91,25 +84,9 @@ function AnimatedNumber({ target }: { target: number }) {
   return <>{val}</>
 }
 
-function Bar({
-  score,
-  color,
-  height = 4,
-}: {
-  score: number
-  color: string
-  height?: number
-}) {
+function Bar({ score, color, height = 4 }: { score: number; color: string; height?: number }) {
   return (
-    <div
-      style={{
-        background: 'var(--border)',
-        borderRadius: 99,
-        height,
-        overflow: 'hidden',
-        marginTop: 6,
-      }}
-    >
+    <div style={{ background: 'var(--border)', borderRadius: 99, height, overflow: 'hidden', marginTop: 6 }}>
       <div
         style={{
           width: `${score}%`,
@@ -157,12 +134,12 @@ function LoadingState() {
 // ─── Federation Carousel ──────────────────────────────────────────────────────
 
 function FederationCarousel({
-  federations,
   index,
+  federations,
   onNavigate,
 }: {
-  federations: Federation[]
   index: number
+  federations: string[]
   onNavigate: (next: number) => void
 }) {
   const go = useCallback(
@@ -173,12 +150,8 @@ function FederationCarousel({
           : (index - 1 + federations.length) % federations.length
       onNavigate(next)
     },
-    [index, federations.length, onNavigate]
+    [index, federations, onNavigate]
   )
-
-  const active = federations[index]
-
-  if (!active) return null
 
   return (
     <div
@@ -194,22 +167,13 @@ function FederationCarousel({
     >
       <CarouselArrow dir="left" onClick={() => go('left')} />
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          padding: '6px 20px',
-          minWidth: 96,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 5 }}>
-          {federations.map((f, i) => (
+      <div style={{ padding: '6px 20px', minWidth: 96, textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {federations.map((fed, i) => (
             <button
-              key={f.id}
+              key={fed}
+              aria-label={fed}
               onClick={() => onNavigate(i)}
-              aria-label={f.abbreviation}
               style={{
                 width: 6,
                 height: 6,
@@ -217,32 +181,17 @@ function FederationCarousel({
                 border: 'none',
                 background: i === index ? 'var(--text)' : 'var(--border)',
                 transform: i === index ? 'scale(1.35)' : 'scale(1)',
-                transition: 'all 0.2s',
                 cursor: 'pointer',
-                padding: 0,
               }}
             />
           ))}
         </div>
 
-        <div
-          style={{
-            fontFamily: 'sans-serif',
-            fontSize: 15,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-          }}
-        >
-          {active.abbreviation}
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.06em' }}>
+          {federations[index]}
         </div>
 
-        <div
-          style={{
-            fontFamily: 'sans-serif',
-            fontSize: 10,
-            color: 'var(--text3)',
-          }}
-        >
+        <div style={{ fontSize: 10, color: 'var(--text3)' }}>
           {index + 1} / {federations.length}
         </div>
       </div>
@@ -252,13 +201,7 @@ function FederationCarousel({
   )
 }
 
-function CarouselArrow({
-  dir,
-  onClick,
-}: {
-  dir: 'left' | 'right'
-  onClick: () => void
-}) {
+function CarouselArrow({ dir, onClick }: { dir: 'left' | 'right'; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -275,21 +218,9 @@ function CarouselArrow({
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         {dir === 'left' ? (
-          <path
-            d="M10 12L6 8L10 4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="1.5" />
         ) : (
-          <path
-            d="M6 4L10 8L6 12"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.5" />
         )}
       </svg>
     </button>
@@ -299,48 +230,55 @@ function CarouselArrow({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ScorecardClient() {
-  const [federations, setFederations] = useState<Federation[]>([])
+  const [federations, setFederations] = useState<string[]>([])
   const [fedIdx, setFedIdx] = useState(0)
   const [data, setData] = useState<ScorecardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeIdx, setActiveIdx] = useState(0)
 
-  // Load federation list once
+  // Bootstrap federation list
   useEffect(() => {
-    async function loadFederations() {
-      const { data, error } = await supabase
-        .from('federations')
-        .select('*')
-        .order('abbreviation')
-
-      if (!error && data) {
-        setFederations(data)
-      }
-    }
-    loadFederations()
+    supabase
+      .from('federations')
+      .select('abbreviation')
+      .order('abbreviation')
+      .then(({ data }) => {
+        if (data) setFederations(data.map(r => r.abbreviation))
+      })
   }, [])
 
-  // Load scorecard when federation changes
-  useEffect(() => {
-    const federation = federations[fedIdx]
-    if (!federation) return
+  // Guard against empty list
+  if (federations.length === 0) return <LoadingState />
 
-    async function loadScorecard() {
+  // Load scorecard data
+  useEffect(() => {
+    const abbr = federations[fedIdx]
+
+    async function load() {
       setLoading(true)
       setError(null)
       setData(null)
       setActiveIdx(0)
 
       try {
+        const { data: fedRows } = await supabase
+          .from('federations')
+          .select('*')
+          .eq('abbreviation', abbr)
+          .limit(1)
+
+        const federation = fedRows?.[0]
+        if (!federation) throw new Error(`No data found for ${abbr}`)
+
         const { data: pillarsRaw } = await supabase
           .from('pillars')
           .select('*')
           .eq('federation_id', federation.id)
           .order('display_order')
 
-        const pillars: Pillar[] = await Promise.all(
-          (pillarsRaw || []).map(async (p) => {
+        const pillarsWithObj: Pillar[] = await Promise.all(
+          (pillarsRaw || []).map(async p => {
             const { data: objectives } = await supabase
               .from('objectives')
               .select('*')
@@ -358,51 +296,188 @@ export default function ScorecardClient() {
           .limit(1)
 
         const assessment = assessmentRows?.[0]
-        if (!assessment) throw new Error('No assessment found')
+        if (!assessment) throw new Error(`No assessment found for ${abbr}`)
 
-        setData({ federation, pillars, assessment })
-      } catch (e: any) {
-        setError(e.message)
+        setData({ federation, pillars: pillarsWithObj, assessment })
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Unknown error')
       } finally {
         setLoading(false)
       }
     }
 
-    loadScorecard()
+    load()
   }, [fedIdx, federations])
-
-  if (!federations.length) return <LoadingState />
 
   const carousel = (
     <FederationCarousel
-      federations={federations}
       index={fedIdx}
+      federations={federations}
       onNavigate={setFedIdx}
     />
   )
 
-  if (loading || !data)
+  if (loading) {
     return (
-      <div style={{ padding: '2rem' }}>
-        <div style={{ marginBottom: '1.5rem' }}>{carousel}</div>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem' }}>
+        <div style={{ marginBottom: '1.25rem' }}>{carousel}</div>
         <LoadingState />
       </div>
     )
+  }
 
-  if (error)
-    return (
-      <div style={{ padding: '2rem' }}>
-        {carousel}
-        <p style={{ marginTop: 16 }}>Error: {error}</p>
+  if (error || !data) return (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem' }}>
+      <div style={{ marginBottom: '1.25rem' }}>{carousel}</div>
+      <div style={{ textAlign: 'center', fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)', padding: '2rem 0' }}>
+        Unable to load scorecard — {error || 'No data'}
       </div>
-    )
+    </div>
+  )
 
-  // ─── Render uses EXACT SAME JSX as your original ───
-  // (No behavioural changes below this point)
+  const { federation, pillars, assessment } = data
+  const activePillar = pillars[activeIdx]
+  const overallScore = Math.round(assessment.overall_score)
+  const abbr = federation.abbreviation
+  const radarData = pillars.map(p => ({
+    name: p.name.replace(' & ', ' &\n'),
+    [abbr]: Math.round(p.objectives.reduce((a, o) => a + o.score, 0) / (p.objectives.length || 1)),
+    Benchmark: 70,
+  }))
 
-  /* 👉 Everything below here you already know works,
-        so I've intentionally not re‑explained it */
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem 4rem' }}>
 
-  // — snip —
-  // Keep your existing render body here unchanged
+      {/* ── Header ── */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ fontFamily: 'sans-serif', fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 8 }}>
+          PRISM · {assessment.assessment_year} · {assessment.methodology_version}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            {/* Carousel replaces the static federation title */}
+            <div style={{ marginBottom: 8 }}>{carousel}</div>
+            <h1 style={{ fontSize: 28, fontWeight: 400, lineHeight: 1.2, color: 'var(--text)' }}>{federation.name}</h1>
+            <p style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>
+              {federation.sport} · Founded {federation.founding_year} · {federation.hq_country}
+              {federation.ioc_recognized && ' · IOC-recognised'}
+            </p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 48, fontWeight: 300, lineHeight: 1, color: scoreColor(overallScore) }}>
+              <AnimatedNumber target={overallScore} /><span style={{ fontSize: 20, color: 'var(--text3)', fontWeight: 400 }}>/100</span>
+            </div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{assessment.grade}</div>
+          </div>
+        </div>
+      </div>
+
+      <hr style={{ border: 'none', borderTop: '0.5px solid var(--border)', marginBottom: '1.5rem' }} />
+
+      {/* ── Stats strip ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: '2rem' }}>
+        {[
+          { label: 'Member federations', val: `${federation.n_member_federations}` },
+          { label: 'Competitions / year', val: `${federation.n_competitions_per_year.toLocaleString()}+` },
+          { label: 'Global fans', val: `${(federation.global_fans_millions / 1000).toFixed(1)}bn` },
+          { label: 'Economic impact', val: `€${federation.economic_impact_bn_eur}bn` },
+        ].map(s => (
+          <div key={s.label} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '12px 14px' }}>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 20, fontWeight: 500, color: 'var(--text)' }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Pillar tabs ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: '1.5rem' }}>
+        {pillars.map((p, i) => {
+          const avg = Math.round(p.objectives.reduce((a, o) => a + o.score, 0) / (p.objectives.length || 1))
+          return (
+            <button key={p.id} onClick={() => setActiveIdx(i)} style={{
+              background: 'var(--surface)', border: i === activeIdx ? `1.5px solid ${p.color}` : '0.5px solid var(--border)',
+              borderRadius: 12, padding: '14px 12px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s',
+            }}>
+              <div style={{ fontSize: 18, marginBottom: 6, color: p.color }}>{p.icon}</div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500, color: 'var(--text)', lineHeight: 1.3, marginBottom: 8 }}>{p.name}</div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 22, fontWeight: 400, color: scoreColor(avg) }}>
+                {avg}<span style={{ fontSize: 11, color: 'var(--text3)' }}>/100</span>
+              </div>
+              <Bar score={avg} color={p.color} />
+              <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                {p.objectives[0]?.trend_note || ''}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Active pillar detail ── */}
+      {activePillar && (
+        <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, padding: '1.25rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <h2 style={{ fontFamily: 'sans-serif', fontSize: 17, fontWeight: 500, color: 'var(--text)' }}>
+                <span style={{ color: activePillar.color }}>{activePillar.icon}</span> {activePillar.name}
+              </h2>
+              <p style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{activePillar.description}</p>
+            </div>
+          </div>
+          {activePillar.objectives.map((obj) => (
+            <div key={obj.id} style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, paddingBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start' }}>
+                <div>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 14, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>{obj.name}</div>
+                  <p style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)', lineHeight: 1.6, marginBottom: 8 }}>{obj.description}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(obj.evidence || []).map((e: string) => (
+                      <span key={e} style={{ fontFamily: 'sans-serif', fontSize: 11, background: 'var(--surface2)', color: 'var(--text2)', border: '0.5px solid var(--border)', borderRadius: 4, padding: '2px 8px' }}>{e}</span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', minWidth: 80 }}>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 24, fontWeight: 400, color: scoreColor(obj.score) }}>{obj.score}</div>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)' }}>IF avg: {obj.benchmark_score}</div>
+                  <Bar score={obj.score} color={scoreColor(obj.score)} height={3} />
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{obj.trend_note}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Radar chart ── */}
+      <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, padding: '1.25rem', marginBottom: '1.5rem' }}>
+        <div style={{ fontFamily: 'sans-serif', fontSize: 14, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>Pillar performance vs IF benchmark</div>
+        <div style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)', marginBottom: '1rem' }}>
+          {abbr} {assessment.assessment_year} · ASOIF benchmark average
+        </div>
+        <div style={{ display: 'flex', gap: 20, marginBottom: '1rem' }}>
+          {[{ label: abbr, color: '#378ADD' }, { label: 'IF benchmark avg', color: '#aaa', dash: true }].map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)' }}>
+              <span style={{ display: 'inline-block', width: 20, height: 2, background: l.dash ? 'repeating-linear-gradient(90deg,#aaa 0,#aaa 4px,transparent 4px,transparent 8px)' : l.color }} />
+              {l.label}
+            </div>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <RadarChart data={radarData}>
+            <PolarGrid stroke="var(--border)" />
+            <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'sans-serif', fill: 'var(--text2)' }} />
+            <Radar name={abbr} dataKey={abbr} stroke="#378ADD" fill="#378ADD" fillOpacity={0.12} strokeWidth={2} dot={{ r: 4, fill: '#378ADD' }} />
+            <Radar name="IF benchmark" dataKey="Benchmark" stroke="#aaa" fill="transparent" strokeWidth={1} strokeDasharray="4 3" dot={{ r: 3, fill: '#aaa' }} />
+            <Tooltip formatter={(v: number) => [`${v}/100`]} contentStyle={{ fontFamily: 'sans-serif', fontSize: 12, background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 6 }} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', lineHeight: 1.7, borderTop: '0.5px solid var(--border)', paddingTop: 16 }}>
+        <strong style={{ color: 'var(--text2)' }}>PRISM methodology</strong> scores International Federations across five dimensions using publicly available strategy documents, annual reports, IOC IF governance reviews, and sport federation benchmarks. Scores reflect documented commitments, institutional capacity, and measurable outputs as of Q1 2025.
+        <br />
+        Sources: {federation.name} strategy documents; {federation.name} Annual Report; IOC Basic Universal Principles of Good Governance; ASOIF IF Governance Review 2023; {federation.abbreviation}.org public data.
+      </div>
+    </div>
+  )
 }
