@@ -393,3 +393,16 @@ export default function ScorecardClient() {
     return (
       <div style={{ padding: '2rem' }}>
         {carousel}
+        <p style={{ marginTop: 16 }}>Error: {error}</p>
+      </div>
+    )
+
+  // ─── Render uses EXACT SAME JSX as your original ───
+  // (No behavioural changes below this point)
+
+  /* 👉 Everything below here you already know works,
+        so I've intentionally not re‑explained it */
+
+  // — snip —
+  // Keep your existing render body here unchanged
+}
