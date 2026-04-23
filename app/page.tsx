@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import ScorecardClient from '@/app/components/ScorecardClient'
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 }
 
 export default function Home() {
-  return <ScorecardClient />
+  return (
+    <Suspense fallback={<div style={{ padding: '2rem' }}>Loading scorecard…</div>}>
+      <ScorecardClient />
+    </Suspense>
+  )
 }
