@@ -57,6 +57,41 @@ function scoreColor(s: number) {
   return '#b83030'
 }
 
+function FederationCarousel({
+  index,
+  onNavigate,
+}: {
+  index: number
+  onNavigate: (next: number) => void
+}) {
+  const go = useCallback(
+    (dir: 'left' | 'right') => {
+      const next =
+        dir === 'right'
+          ? (index + 1) % FEDERATIONS.length
+          : (index - 1 + FEDERATIONS.length) % FEDERATIONS.length
+      onNavigate(next)
+    },
+    [index, onNavigate]
+  )
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: 'var(--surface)', border: '0.5px solid var(--border)',
+      borderRadius: 10, overflow: 'hidden',
+    }}>
+      <button onClick={() => go('left')}>◀</button>
+
+      <div style={{ padding: '6px 20px', fontWeight: 700 }}>
+        {FEDERATIONS[index]}
+      </div>
+
+      <button onClick={() => go('right')}>▶</button>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ScorecardClient() {
