@@ -160,9 +160,9 @@ export default function ScorecardClient() {
       {/* ── RADAR (REPLACED) ── */}
       <div style={{ marginTop: 24 }}>
         <ScorecardRadar
-          federation={federation}
-          pillars={pillars}
-          assessment={assessment}
+          federationId={federation.id}
+          federationAbbr={federation.abbreviation}
+          ifGroup={federation.if_group}
         />
       </div>
 
