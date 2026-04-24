@@ -8,7 +8,7 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis, ResponsiveContainer, Tooltip, Legend,
 } from 'recharts'
-import { createClient } from '@/lib/supabase/client'
+import { createClient } from '@supabase/supabase-js'
 import { IF_GROUPS, groupBadge } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/if-groups'
 
