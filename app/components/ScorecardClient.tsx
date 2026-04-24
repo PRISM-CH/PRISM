@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 import ScorecardRadar from './ScorecardRadar'
-import GroupFilterBar from './GroupFilterBar'
 import PillarInsights from './PillarInsights'
 
 const supabase = createClient(
@@ -152,11 +151,6 @@ export default function ScorecardClient() {
 
       {/* ── HEADER ── */}
       <h1 style={{ fontSize: 28 }}>{federation.name}</h1>
-
-      {/* ── GROUP FILTER BAR (NEW) ── */}
-      <div style={{ margin: '1rem 0' }}>
-        <GroupFilterBar />
-      </div>
 
       {/* ── MAIN STATS ── */}
       <div style={{ fontSize: 48 }}>
