@@ -5,7 +5,7 @@
 // Uses worst_pillar_with_peers view (already in Supabase) + Claude API.
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createClient } from '@supabase/supabase-js'
 import { IF_GROUPS, groupBadge } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/if-groups'
 
