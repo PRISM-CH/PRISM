@@ -68,23 +68,23 @@ export default function GroupFilterBar({
               style={
                 isActive
                   ? {
-                      backgroundColor: `${meta.accentColor}1a`,
+                      backgroundColor: `${meta.accent}1a`,
                       color: meta.color,
-                      borderColor: `${meta.accentColor}40`,
+                      borderColor: `${meta.accent}40`,
                     }
                   : {}
               }
             >
               <span
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: isActive ? meta.accentColor : '#d1d5db' }}
+                style={{ backgroundColor: isActive ? meta.accent : '#d1d5db' }}
               />
               {meta.shortLabel}
               <span
                 className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
                 style={
                   isActive
-                    ? { backgroundColor: `${meta.accentColor}30`, color: meta.color }
+                    ? { backgroundColor: `${meta.accent}30`, color: meta.color }
                     : { backgroundColor: '#f3f4f6', color: '#9ca3af' }
                 }
               >
