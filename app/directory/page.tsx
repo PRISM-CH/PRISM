@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'   // adjust to your client import path
+import { createClient } from '@supabase/supabase-js'
 import { GROUP_ORDER, IF_GROUPS, groupBadge, sortByGroup } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/if-groups'
 
