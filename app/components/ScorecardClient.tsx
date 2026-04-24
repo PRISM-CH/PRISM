@@ -30,6 +30,7 @@ type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0
 
 // ─── Types ───────────────────────────────────────────────────────
+type IFGroup = 'olympic_paris' | 'recognized_if' | 'arisf' | 'aims'
 type Federation = {
   id: string
   name: string
