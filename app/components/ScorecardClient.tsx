@@ -29,8 +29,23 @@ const FEDERATIONS = [
 type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0
 
-// ─── Types (unchanged) ───────────────────────────────────────────────────────
-type Federation = { id: string; name: string; abbreviation: string; hq_country: string; founding_year: number; ioc_recognized: boolean; sport: string; n_member_federations: number; n_competitions_per_year: number; global_fans_millions: number; economic_impact_bn_eur: number }
+// ─── Types ───────────────────────────────────────────────────────
+type Federation = {
+  id: string
+  name: string
+  abbreviation: string
+  hq_country: string
+  founding_year: number | null
+  ioc_recognized: boolean | null
+  sport: string
+  n_member_federations: number | null
+  n_competitions_per_year: number | null
+  global_fans_millions: number | null
+  economic_impact_bn_eur: number | null
+  if_group: IFGroup | null
+  access_tier: 'preview' | 'full' | 'restricted'
+  created_at: string | null
+}
 type Objective = { id: string; pillar_id: string; name: string; description: string; score: number; benchmark_score: number; trend_note: string; evidence: string[]; display_order: number }
 type Pillar = { id: string; name: string; slug: string; description: string; icon: string; color: string; display_order: number; objectives: Objective[] }
 type Assessment = { overall_score: number; grade: string; assessment_year: number; methodology_version: string }
