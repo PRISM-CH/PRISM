@@ -40,7 +40,10 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PillarInsights({ federationId, federationName, federationAbbr, ifGroup }: Props) {
-  const supabase = createClient()
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const [peer, setPeer] = useState<PeerData | null>(null)
   const [objectives, setObjectives] = useState<PillarObjective[]>([])
   const [insight, setInsight] = useState<string>('')
