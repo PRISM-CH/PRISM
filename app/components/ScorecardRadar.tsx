@@ -68,7 +68,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ScorecardRadar({ federationId, federationAbbr, ifGroup }: Props) {
+export default function ScorecardRadar({ federationId, federationAbbr, ifGroup }: Props) {
   const supabase = createClient()
   const [pillarScores, setPillarScores] = useState<PillarScore[]>([])
   const [groupAvgs, setGroupAvgs] = useState<GroupAvg[]>([])
