@@ -178,7 +178,7 @@ export default function ScorecardClient() {
         <ScorecardRadar
           federationId={federation.id}
           federationAbbr={federation.abbreviation}
-          ifGroup={federation.if_group}
+          ifGroup={federation.if_group as IFGroup}
         />
       </div>
 
