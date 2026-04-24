@@ -1,568 +1,344 @@
 'use client'
+// PRISM IF Directory
+// Fetches all federations + assessments, groups them,
+// renders a filterable / sortable directory with group section headers.
 
-import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { GROUP_ORDER, IF_GROUPS, filterByGroups, sortFederationsByGroup } from '@/lib/if-groups'
+import { useEffect, useState, useMemo } from 'react'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'   // adjust to your client import path
+import { GROUP_ORDER, IF_GROUPS, groupBadge, sortByGroup } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/if-groups'
-import { useGroupFilter } from '@/app/components/GroupFilterBar'
-import { GroupFilterBar } from '@/app/components/GroupFilterBar'
-import type { SortKey } from '@/app/components/GroupFilterBar'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type FederationRow = {
+interface Federation {
   id: string
   name: string
   abbreviation: string
-  sport: string
-  hq_country: string
-  founding_year: number
-  ioc_recognized: boolean
   if_group: IFGroup
-  n_member_federations: number
-  overall_score?: number
-  grade?: string
+  n_member_federations: number | null
+  global_fans_millions: number | null
+  overall_score: number | null
+  grade: string | null
+  access_tier: string | null
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type SortKey = 'group' | 'score' | 'name' | 'size'
 
-function scoreColor(s: number | undefined) {
-  if (!s) return 'var(--text3)'
-  if (s >= 80) return '#2d7d46'
-  if (s >= 70) return '#1a6fa8'
-  if (s >= 60) return '#a06010'
-  return '#b83030'
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function scoreColor(score: number | null) {
+  if (!score) return 'text-gray-400'
+  if (score >= 80) return 'text-emerald-600'
+  if (score >= 65) return 'text-blue-600'
+  if (score >= 50) return 'text-amber-600'
+  return 'text-red-500'
 }
 
-function ScoreBar({ score }: { score: number | undefined }) {
-  if (!score) return null
-  return (
-    <div style={{ background: 'var(--border)', borderRadius: 99, height: 3, overflow: 'hidden', marginTop: 4 }}>
-      <div
-        style={{
-          width: `${score}%`,
-          height: '100%',
-          background: scoreColor(score),
-          borderRadius: 99,
-          transition: 'width 0.5s ease',
-        }}
-      />
-    </div>
-  )
+function scoreBarWidth(score: number | null) {
+  return `${Math.max(0, Math.min(100, Number(score) || 0))}%`
 }
 
-function GroupBadge({ group }: { group: IFGroup }) {
-  const meta = IF_GROUPS[group]
-  if (!meta) return null
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 8px',
-        borderRadius: 99,
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: '0.04em',
-        fontFamily: 'sans-serif',
-        backgroundColor: `${meta.accentColor}18`,
-        color: meta.color,
-        border: `0.5px solid ${meta.accentColor}40`,
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          width: 5,
-          height: 5,
-          borderRadius: '50%',
-          backgroundColor: meta.accentColor,
-          display: 'inline-block',
-        }}
-      />
-      {meta.shortLabel}
-    </span>
-  )
+function scoreBarColor(score: number | null) {
+  if (!score) return 'bg-gray-200'
+  if (score >= 80) return 'bg-emerald-500'
+  if (score >= 65) return 'bg-blue-500'
+  if (score >= 50) return 'bg-amber-400'
+  return 'bg-red-400'
 }
 
-function FederationCard({
-  fed,
-  onClick,
-}: {
-  fed: FederationRow
-  onClick: () => void
-}) {
-  const [hovered, setHovered] = useState(false)
-  const score = fed.overall_score
-  const groupMeta = IF_GROUPS[fed.if_group]
-
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 0,
-        background: 'var(--surface)',
-        border: hovered
-          ? `0.5px solid ${groupMeta?.accentColor ?? 'var(--border)'}80`
-          : '0.5px solid var(--border)',
-        borderRadius: 12,
-        padding: '16px 16px 14px',
-        cursor: 'pointer',
-        textAlign: 'left',
-        transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.1s',
-        boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.06)' : 'none',
-        transform: hovered ? 'translateY(-1px)' : 'none',
-        width: '100%',
-      }}
-    >
-      {/* Top row: abbr + score */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-        <div>
-          <div
-            style={{
-              fontFamily: 'sans-serif',
-              fontSize: 18,
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-              color: 'var(--text)',
-              lineHeight: 1,
-            }}
-          >
-            {fed.abbreviation}
-          </div>
-          <GroupBadge group={fed.if_group} />
-        </div>
-        {score !== undefined && (
-          <div style={{ textAlign: 'right' }}>
-            <div
-              style={{
-                fontFamily: 'sans-serif',
-                fontSize: 22,
-                fontWeight: 300,
-                color: scoreColor(score),
-                lineHeight: 1,
-              }}
-            >
-              {Math.round(score)}
-            </div>
-            <div style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)' }}>
-              {fed.grade ?? '/100'}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Federation name */}
-      <div
-        style={{
-          fontFamily: 'sans-serif',
-          fontSize: 12,
-          fontWeight: 500,
-          color: 'var(--text)',
-          lineHeight: 1.4,
-          marginBottom: 4,
-          flex: 1,
-        }}
-      >
-        {fed.name}
-      </div>
-
-      {/* Sport + country */}
-      <div
-        style={{
-          fontFamily: 'sans-serif',
-          fontSize: 11,
-          color: 'var(--text3)',
-          marginBottom: score !== undefined ? 8 : 0,
-          lineHeight: 1.4,
-        }}
-      >
-        {fed.sport} · {fed.hq_country}
-      </div>
-
-      {/* Score bar */}
-      {score !== undefined && <ScoreBar score={score} />}
-    </button>
-  )
-}
-
-function SkeletonCard() {
-  return (
-    <div
-      style={{
-        background: 'var(--surface2)',
-        borderRadius: 12,
-        height: 130,
-        animation: 'pulse 1.5s ease-in-out infinite',
-      }}
-    />
-  )
-}
-
-// ─── Sort logic ───────────────────────────────────────────────────────────────
-
-function sortFederations(feds: FederationRow[], key: SortKey): FederationRow[] {
-  const copy = [...feds]
-  switch (key) {
-    case 'group':
-      return sortFederationsByGroup(copy)
-    case 'score_desc':
-      return copy.sort((a, b) => (b.overall_score ?? 0) - (a.overall_score ?? 0))
-    case 'score_asc':
-      return copy.sort((a, b) => (a.overall_score ?? 0) - (b.overall_score ?? 0))
-    case 'name':
-      return copy.sort((a, b) => a.name.localeCompare(b.name))
-    case 'size':
-      return copy.sort((a, b) => (b.n_member_federations ?? 0) - (a.n_member_federations ?? 0))
-    default:
-      return copy
-  }
-}
-
-// ─── Group section header ─────────────────────────────────────────────────────
-
-function GroupHeader({ group }: { group: IFGroup }) {
-  const meta = IF_GROUPS[group]
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        marginTop: 28,
-        marginBottom: 14,
-        paddingBottom: 10,
-        borderBottom: `0.5px solid ${meta.accentColor}30`,
-      }}
-    >
-      <span
-        style={{
-          display: 'inline-block',
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          backgroundColor: meta.accentColor,
-          flexShrink: 0,
-        }}
-      />
-      <div>
-        <div
-          style={{
-            fontFamily: 'sans-serif',
-            fontSize: 13,
-            fontWeight: 600,
-            color: meta.color,
-            lineHeight: 1,
-          }}
-        >
-          {meta.label}
-        </div>
-        <div
-          style={{
-            fontFamily: 'sans-serif',
-            fontSize: 11,
-            color: 'var(--text3)',
-            marginTop: 2,
-          }}
-        >
-          {meta.description}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function DirectoryPage() {
-  const [federations, setFederations] = useState<FederationRow[]>([])
+  const supabase = createClient()
+  const [feds, setFeds] = useState<Federation[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [activeGroups, setActiveGroups] = useState<IFGroup[]>([])
+  const [sortKey, setSortKey] = useState<SortKey>('group')
 
-  const { activeGroups, sortKey, toggleGroup, setSortKey } = useGroupFilter()
-
-  // ── Fetch all federations with their latest assessment score ──────────────
-
+  // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Fetch all federations
-        const { data: feds, error: fedErr } = await supabase
-          .from('federations')
-          .select('id, name, abbreviation, sport, hq_country, founding_year, ioc_recognized, if_group, n_member_federations')
-          .order('name')
-
-        if (fedErr) throw new Error(fedErr.message)
-        if (!feds?.length) throw new Error('No federations found')
-
-        // Fetch latest assessment score per federation
-        const { data: assessments, error: assErr } = await supabase
-          .from('assessments')
-          .select('federation_id, overall_score, grade, assessment_year')
-          .order('assessment_year', { ascending: false })
-
-        if (assErr) throw new Error(assErr.message)
-
-        // Map latest score onto each federation
-        const scoreMap = new Map<string, { overall_score: number; grade: string }>()
-        for (const a of assessments ?? []) {
-          if (!scoreMap.has(a.federation_id)) {
-            scoreMap.set(a.federation_id, { overall_score: a.overall_score, grade: a.grade })
-          }
-        }
-
-        const enriched: FederationRow[] = feds.map((f) => ({
+      const { data } = await supabase
+        .from('federations')
+        .select(`
+          id, name, abbreviation, if_group,
+          n_member_federations, global_fans_millions, access_tier,
+          assessments ( overall_score, grade )
+        `)
+      if (data) {
+        const flat: Federation[] = data.map((f: any) => ({
           ...f,
-          if_group: f.if_group as IFGroup,
-          overall_score: scoreMap.get(f.id)?.overall_score,
-          grade: scoreMap.get(f.id)?.grade,
+          overall_score: f.assessments?.[0]?.overall_score ?? null,
+          grade: f.assessments?.[0]?.grade ?? null,
         }))
-
-        setFederations(enriched)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Unknown error')
-      } finally {
-        setLoading(false)
+        setFeds(flat)
       }
+      setLoading(false)
     }
-
     load()
   }, [])
 
-  // ── Derived data ──────────────────────────────────────────────────────────
-
-  const groupCounts = useMemo(
-    () =>
-      GROUP_ORDER.map((group) => ({
-        group,
-        count: federations.filter((f) => f.if_group === group).length,
-      })),
-    [federations]
-  )
-
+  // ── Filter + Sort ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let result = filterByGroups(federations, activeGroups)
+    let list = [...feds]
+
     if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      result = result.filter(
+      const q = search.toLowerCase()
+      list = list.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
-          f.abbreviation.toLowerCase().includes(q) ||
-          f.sport.toLowerCase().includes(q) ||
-          f.hq_country.toLowerCase().includes(q)
+          f.abbreviation.toLowerCase().includes(q)
       )
     }
-    return sortFederations(result, sortKey)
-  }, [federations, activeGroups, search, sortKey])
 
-  // ── Grouped rendering (only when sort=group) ──────────────────────────────
+    if (activeGroups.length > 0) {
+      list = list.filter((f) => activeGroups.includes(f.if_group))
+    }
 
-  const showGroupHeaders = sortKey === 'group' && activeGroups.length === 0 && !search.trim()
+    switch (sortKey) {
+      case 'score':
+        list.sort((a, b) => (Number(b.overall_score) || 0) - (Number(a.overall_score) || 0))
+        break
+      case 'name':
+        list.sort((a, b) => a.name.localeCompare(b.name))
+        break
+      case 'size':
+        list.sort((a, b) => (b.n_member_federations || 0) - (a.n_member_federations || 0))
+        break
+      default: // 'group'
+        list = sortByGroup(list)
+    }
 
-  const groupedFeds = useMemo(() => {
-    if (!showGroupHeaders) return null
-    return GROUP_ORDER.map((group) => ({
-      group,
-      feds: filtered.filter((f) => f.if_group === group),
-    })).filter((g) => g.feds.length > 0)
-  }, [filtered, showGroupHeaders])
+    return list
+  }, [feds, search, activeGroups, sortKey])
 
-  // ── Navigate to scorecard (reuse existing page) ───────────────────────────
+  // ── Group sections for 'group' sort ──────────────────────────────────────
+  const grouped = useMemo(() => {
+    if (sortKey !== 'group') return null
+    const map: Record<string, Federation[]> = {}
+    for (const g of GROUP_ORDER) map[g] = []
+    for (const f of filtered) {
+      if (f.if_group && map[f.if_group]) map[f.if_group].push(f)
+    }
+    return map
+  }, [filtered, sortKey])
 
-  function goToScorecard(abbr: string) {
-    // The existing scorecard is on /  — we pass the federation via URL param
-    // Adjust this path if you wire up routing differently
-    window.location.href = `/?fed=${abbr}`
-  }
+  // ── Counts per group ─────────────────────────────────────────────────────
+  const groupCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const f of feds) counts[f.if_group] = (counts[f.if_group] || 0) + 1
+    return counts
+  }, [feds])
+
+  const toggleGroup = (g: IFGroup) =>
+    setActiveGroups((prev) =>
+      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
+    )
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-sm text-gray-400 animate-pulse">Loading federations…</div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.25rem 4rem' }}>
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:.7} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-        .fed-grid { animation: fadeIn 0.3s ease; }
-      `}</style>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">IF Directory</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {feds.length} international federations across 4 recognition tiers
+        </p>
+      </div>
 
-      {/* ── Page header ── */}
-      <div style={{ marginBottom: '1.75rem' }}>
-        <div style={{
-          fontFamily: 'sans-serif', fontSize: 11, fontWeight: 500,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-          color: 'var(--text3)', marginBottom: 8,
-        }}>
-          PRISM · IF Directory
+      {/* Controls */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        {/* Search */}
+        <div className="relative flex-1 max-w-xs">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search federations…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{
-              fontSize: 26, fontWeight: 400, lineHeight: 1.2,
-              color: 'var(--text)', margin: 0,
-            }}>
-              International Federations
-            </h1>
-            <p style={{
-              fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text2)', marginTop: 4,
-            }}>
-              {loading ? 'Loading…' : `${federations.length} federations across ${GROUP_ORDER.length} groups`}
-            </p>
-          </div>
 
-          {/* Search */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--surface)',
-            border: `0.5px solid ${searchFocused ? 'var(--text2)' : 'var(--border)'}`,
-            borderRadius: 8, padding: '7px 12px',
-            transition: 'border-color 0.15s',
-          }}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-              <circle cx="6" cy="6" r="4.5" stroke="var(--text3)" strokeWidth="1.25" />
-              <path d="M9.5 9.5L12.5 12.5" stroke="var(--text3)" strokeWidth="1.25" strokeLinecap="round" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search federations…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              style={{
-                fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)',
-                background: 'transparent', border: 'none', outline: 'none',
-                width: 180, minWidth: 0,
-              }}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--text3)', padding: 0, lineHeight: 1, fontSize: 14,
-                }}
-                aria-label="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
+        {/* Sort */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          {(['group', 'score', 'name', 'size'] as SortKey[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSortKey(s)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                sortKey === s
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {s === 'group' ? 'By Group' : s === 'score' ? 'Score ↓' : s === 'name' ? 'A–Z' : 'Size'}
+            </button>
+          ))}
         </div>
       </div>
 
-      <hr style={{ border: 'none', borderTop: '0.5px solid var(--border)', marginBottom: '1rem' }} />
-
-      {/* ── Filter bar ── */}
-      <GroupFilterBar
-        groupCounts={groupCounts}
-        activeGroups={activeGroups}
-        sortKey={sortKey}
-        onGroupToggle={toggleGroup}
-        onSortChange={setSortKey}
-        totalVisible={filtered.length}
-        totalAll={federations.length}
-      />
-
-      <hr style={{ border: 'none', borderTop: '0.5px solid var(--border)', margin: '1rem 0 1.5rem' }} />
-
-      {/* ── Error ── */}
-      {error && (
-        <div style={{
-          fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)',
-          textAlign: 'center', padding: '3rem 0',
-        }}>
-          Unable to load directory — {error}
-        </div>
-      )}
-
-      {/* ── Loading skeletons ── */}
-      {loading && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-          gap: 10,
-        }}>
-          {Array.from({ length: 18 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-      )}
-
-      {/* ── Empty state ── */}
-      {!loading && !error && filtered.length === 0 && (
-        <div style={{
-          fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)',
-          textAlign: 'center', padding: '3rem 0',
-        }}>
-          No federations match your filters.{' '}
+      {/* Group filter pills */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {GROUP_ORDER.map((g) => {
+          const meta = IF_GROUPS[g]
+          const badge = groupBadge(g)
+          const active = activeGroups.length === 0 || activeGroups.includes(g)
+          return (
+            <button
+              key={g}
+              onClick={() => toggleGroup(g)}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                active
+                  ? `${badge.bg} ${badge.text} ${badge.border}`
+                  : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${active ? badge.dot : 'bg-gray-300'}`} />
+              {meta.shortLabel}
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                active ? `${badge.bg} ${badge.text}` : 'bg-gray-100 text-gray-400'
+              }`}>
+                {groupCounts[g] || 0}
+              </span>
+            </button>
+          )
+        })}
+        {activeGroups.length > 0 && (
           <button
-            onClick={() => { setSearch(''); setSortKey('group') }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', textDecoration: 'underline', fontFamily: 'sans-serif', fontSize: 13 }}
+            onClick={() => setActiveGroups([])}
+            className="text-xs text-gray-400 hover:text-gray-600 px-2"
           >
-            Clear filters
+            Clear ×
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ── Grouped view (sort=group, no active filter, no search) ── */}
-      {!loading && !error && showGroupHeaders && groupedFeds && (
-        <div>
-          {groupedFeds.map(({ group, feds }) => (
-            <div key={group}>
-              <GroupHeader group={group} />
-              <div
-                className="fed-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                  gap: 10,
-                }}
-              >
-                {feds.map((fed) => (
-                  <FederationCard
-                    key={fed.id}
-                    fed={fed}
-                    onClick={() => goToScorecard(fed.abbreviation)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Results count */}
+      <p className="text-xs text-gray-400 mb-4">
+        {filtered.length === feds.length
+          ? `${feds.length} federations`
+          : `${filtered.length} of ${feds.length} federations`}
+      </p>
 
-      {/* ── Flat view (filtered / sorted / searched) ── */}
-      {!loading && !error && !showGroupHeaders && filtered.length > 0 && (
-        <div
-          className="fed-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-            gap: 10,
-          }}
-        >
+      {/* Grouped sections */}
+      {grouped ? (
+        <div className="space-y-10">
+          {GROUP_ORDER.map((g) => {
+            const items = grouped[g]
+            if (items.length === 0) return null
+            const meta = IF_GROUPS[g]
+            const badge = groupBadge(g)
+            return (
+              <section key={g}>
+                {/* Section header */}
+                <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-100">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badge.bg} ${badge.text} ${badge.border}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${badge.dot}`} />
+                    {meta.label}
+                  </span>
+                  <span className="text-xs text-gray-400">{items.length} federations</span>
+                  <span className="text-xs text-gray-300 hidden sm:inline">·</span>
+                  <span className="text-xs text-gray-400 hidden sm:inline">{meta.description}</span>
+                </div>
+
+                {/* Federation cards grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {items.map((fed) => (
+                    <FederationCard key={fed.id} fed={fed} />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      ) : (
+        /* Flat list for non-group sorts */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filtered.map((fed) => (
-            <FederationCard
-              key={fed.id}
-              fed={fed}
-              onClick={() => goToScorecard(fed.abbreviation)}
-            />
+            <FederationCard key={fed.id} fed={fed} />
           ))}
+        </div>
+      )}
+
+      {filtered.length === 0 && (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-sm">No federations match your search.</p>
         </div>
       )}
     </div>
+  )
+}
+
+// ── Federation Card ───────────────────────────────────────────────────────────
+
+function FederationCard({ fed }: { fed: Federation }) {
+  const badge = groupBadge(fed.if_group)
+  const isPreview = fed.access_tier === 'preview'
+
+  return (
+    <Link
+      href={`/directory/${fed.id}`}
+      className="group relative flex flex-col bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-md transition-all duration-150"
+    >
+      {/* Preview lock badge */}
+      {isPreview && (
+        <span className="absolute top-3 right-3 text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+          PREVIEW
+        </span>
+      )}
+
+      {/* Abbreviation + name */}
+      <div className="mb-3">
+        <div className="text-lg font-black text-gray-900 tracking-tight group-hover:text-blue-700 transition-colors">
+          {fed.abbreviation}
+        </div>
+        <div className="text-xs text-gray-500 leading-snug mt-0.5 line-clamp-2">{fed.name}</div>
+      </div>
+
+      {/* Score bar */}
+      <div className="mb-2">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className={`text-xl font-bold tabular-nums ${scoreColor(fed.overall_score)}`}>
+            {fed.overall_score != null ? Number(fed.overall_score).toFixed(1) : '—'}
+          </span>
+          {fed.grade && (
+            <span className="text-xs font-semibold text-gray-500">{fed.grade}</span>
+          )}
+        </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${scoreBarColor(fed.overall_score)}`}
+            style={{ width: scoreBarWidth(fed.overall_score) }}
+          />
+        </div>
+      </div>
+
+      {/* Footer: group badge + member count */}
+      <div className="flex items-center justify-between mt-auto pt-2">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
+          {IF_GROUPS[fed.if_group]?.shortLabel ?? fed.if_group}
+        </span>
+        {fed.n_member_federations && (
+          <span className="text-[10px] text-gray-400">
+            {fed.n_member_federations} NFs
+          </span>
+        )}
+      </div>
+    </Link>
   )
 }
