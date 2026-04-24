@@ -35,7 +35,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'size', label: 'Size' },
 ]
 
-export function GroupFilterBar({
+export default function GroupFilterBar({
   groupCounts,
   activeGroups,
   sortKey,
