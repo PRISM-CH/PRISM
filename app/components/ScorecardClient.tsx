@@ -2,17 +2,15 @@
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
+// ✅ Use shared singleton — never call createClient() in a component
+import { supabase } from '@/lib/supabase'
+// ✅ Import all types from canonical location — never redefine locally
+import type { Federation, Pillar, Objective, Assessment, ScorecardData } from '@/lib/types'
 
 import ScorecardRadar from './ScorecardRadar'
 import PillarInsights from './PillarInsights'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-// ─── Federation carousel config ───────────────────────────────────────────────
+// ── Federation carousel config ────────────────────────────────────────────────
 const FEDERATIONS = [
   'BWF','CIPS','CMAS','FAI','FEI','FIA','FIAS','FIB','FIBA','FIDE',
   'FIE','FIFA','FIH','FIK','FIL','FIM','FIP','FIPV','FIS','FISA',
@@ -29,30 +27,7 @@ const FEDERATIONS = [
 type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0
 
-// ─── Types ───────────────────────────────────────────────────────
-type IFGroup = 'olympic_paris' | 'recognized_if' | 'arisf' | 'aims'
-type Federation = {
-  id: string
-  name: string
-  abbreviation: string
-  hq_country: string
-  founding_year: number | null
-  ioc_recognized: boolean | null
-  sport: string
-  n_member_federations: number | null
-  n_competitions_per_year: number | null
-  global_fans_millions: number | null
-  economic_impact_bn_eur: number | null
-  if_group: IFGroup | null
-  access_tier: 'preview' | 'full' | 'restricted'
-  created_at: string | null
-}
-type Objective = { id: string; pillar_id: string; name: string; description: string; score: number; benchmark_score: number; trend_note: string; evidence: string[]; display_order: number }
-type Pillar = { id: string; name: string; slug: string; description: string; icon: string; color: string; display_order: number; objectives: Objective[] }
-type Assessment = { overall_score: number; grade: string; assessment_year: number; methodology_version: string }
-type ScorecardData = { federation: Federation; pillars: Pillar[]; assessment: Assessment }
-
-// ─── Helpers (unchanged) ─────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function scoreColor(s: number) {
   if (s >= 80) return '#2d7d46'
   if (s >= 70) return '#1a6fa8'
@@ -74,7 +49,7 @@ function AnimatedNumber({ target }: { target: number }) {
   return <>{val}</>
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function ScorecardClient() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -108,7 +83,7 @@ export default function ScorecardClient() {
           .eq('abbreviation', abbr)
           .limit(1)
 
-        const federation = fedRows?.[0]
+        const federation = fedRows?.[0] as Federation | undefined
         if (!federation) throw new Error(`No data found for ${abbr}`)
 
         const { data: pillarsRaw } = await supabase
@@ -135,7 +110,8 @@ export default function ScorecardClient() {
           .order('assessment_year', { ascending: false })
           .limit(1)
 
-        const assessment = assessmentRows?.[0]
+        const assessment = assessmentRows?.[0] as Assessment | undefined
+        if (!assessment) throw new Error(`No assessment found for ${abbr}`)
 
         setData({ federation, pillars: pillarsWithObj, assessment })
       } catch (e: any) {
@@ -158,8 +134,6 @@ export default function ScorecardClient() {
   if (error || !data) return <div style={{ padding: '2rem' }}>Error: {error}</div>
 
   const { federation, pillars, assessment } = data
-  const activePillar = pillars[activeIdx]
-
   const overallScore = Math.round(assessment.overall_score)
 
   return (
@@ -173,19 +147,38 @@ export default function ScorecardClient() {
         <AnimatedNumber target={overallScore} />/100
       </div>
 
-      {/* ── RADAR (REPLACED) ── */}
-      <div style={{ marginTop: 24 }}>
-        <ScorecardRadar
-          federationId={federation.id}
-          federationAbbr={federation.abbreviation}
-          ifGroup={federation.if_group as IFGroup}
-        />
-      </div>
+      {/* ── RADAR ── */}
+      {/*
+        ✅ FIXED: null-guard federation.if_group before passing to ScorecardRadar.
+        ScorecardRadar requires ifGroup: IFGroup (non-nullable).
+        If if_group is null, we skip rendering the radar entirely.
+      */}
+      {federation.if_group && (
+        <div style={{ marginTop: 24 }}>
+          <ScorecardRadar
+            federationId={federation.id}
+            federationAbbr={federation.abbreviation}
+            ifGroup={federation.if_group}
+          />
+        </div>
+      )}
 
-      {/* ── PILLAR INSIGHTS (NEW) ── */}
-      <div style={{ marginTop: 24 }}>
-        <PillarInsights pillar={activePillar} />
-      </div>
+      {/* ── PILLAR INSIGHTS ── */}
+      {/*
+        ✅ FIXED: PillarInsights is federation-scoped, not pillar-scoped.
+        Pass federation props — NOT activePillar.
+        Also null-guard if_group before passing as IFGroup.
+      */}
+      {federation.if_group && (
+        <div style={{ marginTop: 24 }}>
+          <PillarInsights
+            federationId={federation.id}
+            federationName={federation.name}
+            federationAbbr={federation.abbreviation}
+            ifGroup={federation.if_group}
+          />
+        </div>
+      )}
 
     </div>
   )
