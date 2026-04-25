@@ -39,9 +39,9 @@ interface Props {
 // ── Group badge inline styles ─────────────────────────────────────────────────
 
 function groupBadgeStyle(ifGroup: IFGroup): { background: string; color: string; border: string } {
-  if (ifGroup === 'Olympic')  return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
-  if (ifGroup === 'ARISF')    return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
-  if (ifGroup === 'AIMS')     return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
+  if (ifGroup === 'olympic_paris')  return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
+  if (ifGroup === 'arisf')    return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
+  if (ifGroup === 'aims')     return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
   return { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }
 }
 
