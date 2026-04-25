@@ -5,17 +5,19 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { createClient } from '@supabase/supabase-js'
+// Use shared singleton — never call createClient() in a component
+import { supabase } from '@/lib/supabase'
 import { GROUP_ORDER, IF_GROUPS, groupBadge, sortByGroup } from '@/lib/if-groups'
-import type { IFGroup } from '@/lib/if-groups'
+// Import IFGroup from canonical location only
+import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Federation {
+// Local view type — only the fields this page needs from the DB join
+interface FederationRow {
   id: string
   name: string
   abbreviation: string
-  if_group: IFGroup
+  if_group: IFGroup | null         // nullable from DB — guard before use
   n_member_federations: number | null
   global_fans_millions: number | null
   overall_score: number | null
@@ -50,11 +52,8 @@ function scoreBarColor(score: number | null) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function DirectoryPage() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const [feds, setFeds] = useState<Federation[]>([])
+  // ✅ No createClient() here — use shared singleton imported above
+  const [feds, setFeds] = useState<FederationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [activeGroups, setActiveGroups] = useState<IFGroup[]>([])
@@ -71,7 +70,7 @@ export default function DirectoryPage() {
           assessments ( overall_score, grade )
         `)
       if (data) {
-        const flat: Federation[] = data.map((f: any) => ({
+        const flat: FederationRow[] = data.map((f: any) => ({
           ...f,
           overall_score: f.assessments?.[0]?.overall_score ?? null,
           grade: f.assessments?.[0]?.grade ?? null,
@@ -83,7 +82,7 @@ export default function DirectoryPage() {
     load()
   }, [])
 
-  // ── Filter + Sort ─────────────────────────────────────────────────────────
+  // ── Filter + Sort ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...feds]
 
@@ -97,7 +96,8 @@ export default function DirectoryPage() {
     }
 
     if (activeGroups.length > 0) {
-      list = list.filter((f) => activeGroups.includes(f.if_group))
+      // ✅ Null-guard: federations with null if_group are excluded when filtering
+      list = list.filter((f) => f.if_group && activeGroups.includes(f.if_group))
     }
 
     switch (sortKey) {
@@ -117,21 +117,24 @@ export default function DirectoryPage() {
     return list
   }, [feds, search, activeGroups, sortKey])
 
-  // ── Group sections for 'group' sort ──────────────────────────────────────
+  // ── Group sections for 'group' sort ───────────────────────────────────────
   const grouped = useMemo(() => {
     if (sortKey !== 'group') return null
-    const map: Record<string, Federation[]> = {}
+    const map: Record<string, FederationRow[]> = {}
     for (const g of GROUP_ORDER) map[g] = []
     for (const f of filtered) {
+      // ✅ Null-guard: skip federations with null if_group in grouped view
       if (f.if_group && map[f.if_group]) map[f.if_group].push(f)
     }
     return map
   }, [filtered, sortKey])
 
-  // ── Counts per group ─────────────────────────────────────────────────────
+  // ── Counts per group ───────────────────────────────────────────────────────
   const groupCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const f of feds) counts[f.if_group] = (counts[f.if_group] || 0) + 1
+    for (const f of feds) {
+      if (f.if_group) counts[f.if_group] = (counts[f.if_group] || 0) + 1
+    }
     return counts
   }, [feds])
 
@@ -140,7 +143,7 @@ export default function DirectoryPage() {
       prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
     )
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -289,7 +292,7 @@ export default function DirectoryPage() {
 
 // ── Federation Card ───────────────────────────────────────────────────────────
 
-function FederationCard({ fed }: { fed: Federation }) {
+function FederationCard({ fed }: { fed: FederationRow }) {
   const badge = groupBadge(fed.if_group)
   const isPreview = fed.access_tier === 'preview'
 
@@ -317,7 +320,7 @@ function FederationCard({ fed }: { fed: Federation }) {
       <div className="mb-2">
         <div className="flex items-baseline justify-between mb-1">
           <span className={`text-xl font-bold tabular-nums ${scoreColor(fed.overall_score)}`}>
-            {fed.overall_score != null ? Number(fed.overall_score).toFixed(1) : '—'}
+            {fed.overall_score != null ? Number(fed.overall_score).toFixed(1) : '–'}
           </span>
           {fed.grade && (
             <span className="text-xs font-semibold text-gray-500">{fed.grade}</span>
@@ -334,7 +337,8 @@ function FederationCard({ fed }: { fed: Federation }) {
       {/* Footer: group badge + member count */}
       <div className="flex items-center justify-between mt-auto pt-2">
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
-          {IF_GROUPS[fed.if_group]?.shortLabel ?? fed.if_group}
+          {/* ✅ Null-guard: show raw value if no meta found */}
+          {IF_GROUPS[fed.if_group!]?.shortLabel ?? fed.if_group ?? '–'}
         </span>
         {fed.n_member_federations && (
           <span className="text-[10px] text-gray-400">
