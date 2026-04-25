@@ -9,7 +9,7 @@
 // Matches the `if_group` column in the `federations` table.
 // The DB allows null — always use `IFGroup | null` for DB-sourced values,
 // and null-guard BEFORE passing into any prop typed as `IFGroup`.
-export type IFGroup = 'olympic_paris' | 'recognized_if' | 'arisf' | 'aims'
+export type IFGroup = 'olympic_paris' | 'olympic_milano' | 'arisf' | 'aims'
 
 // ── Federation ───────────────────────────────────────────────────────────────
 export interface Federation {
