@@ -1,13 +1,15 @@
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // PRISM · hooks/useGroupAverages.ts
 // Fetches per-group pillar averages and worst-pillar peer data from Supabase
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from 'react'
+// Use shared singleton — never call createClient() in a hook
 import { supabase } from '@/lib/supabase'
-import type { IFGroup } from '@/lib/if-groups'
+// Import IFGroup from canonical location only
+import type { IFGroup } from '@/lib/types'
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface GroupPillarAverage {
   if_group: IFGroup
@@ -28,12 +30,12 @@ export interface WorstPillarPeer {
   worst_pillar_name: string
   worst_pillar_slug: string
   worst_pillar_score: number
-  top_peers: string[] | null       // abbreviations
-  top_peer_names: string[] | null  // full names
+  top_peers: string[] | null        // abbreviations
+  top_peer_names: string[] | null   // full names
   top_peer_scores: number[] | null
 }
 
-// ── Hook: group pillar averages (all groups) ─────────────────────────────────
+// ── Hook: group pillar averages (all groups) ──────────────────────────────────
 
 export function useGroupPillarAverages() {
   const [data, setData] = useState<GroupPillarAverage[]>([])
@@ -68,7 +70,7 @@ export function useGroupPillarAverages() {
   return { data, loading, error, getBenchmarkForGroup }
 }
 
-// ── Hook: worst pillar + peers for a single federation ───────────────────────
+// ── Hook: worst pillar + peers for a single federation ────────────────────────
 
 export function useWorstPillarPeers(federationId: string | undefined) {
   const [data, setData] = useState<WorstPillarPeer | null>(null)
@@ -80,14 +82,17 @@ export function useWorstPillarPeers(federationId: string | undefined) {
     setLoading(true)
 
     async function fetch() {
+      // ✅ Use maybeSingle() instead of single().
+      // .single() throws if the row doesn't exist; .maybeSingle() returns null safely.
       const { data: rows, error: err } = await supabase
         .from('worst_pillar_with_peers')
         .select('*')
         .eq('federation_id', federationId)
-        .single()
+        .maybeSingle()
 
       if (err) setError(err.message)
-      else setData(rows)
+      // ✅ null-check before setting state
+      else if (rows) setData(rows)
       setLoading(false)
     }
     fetch()
@@ -96,7 +101,7 @@ export function useWorstPillarPeers(federationId: string | undefined) {
   return { data, loading, error }
 }
 
-// ── Hook: federation pillar scores (for the scorecard radar) ─────────────────
+// ── Hook: federation pillar scores (for the scorecard radar) ──────────────────
 
 export interface FederationPillarScore {
   pillar_name: string
