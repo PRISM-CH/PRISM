@@ -1,9 +1,10 @@
 'use client'
 // components/PillarInsights.tsx  ─  PRISM
-// Shows an IF's worst-performing pillar and generates AI recommendations.
-// Uses worst_pillar_with_peers view + Claude API via /api/insights.
+// Loads pre-generated AI recommendations from pillar_insights table.
+// Falls back to on-demand generation if no cached insight exists.
+// Keeps Priority Improvement Area + Top Peers sections unchanged.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { IF_GROUPS } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/types'
@@ -29,6 +30,12 @@ interface PillarObjective {
   description: string | null
 }
 
+interface StoredInsight {
+  insight: string
+  generated_at: string
+  pillar_name: string
+}
+
 interface Props {
   federationId: string
   federationName: string
@@ -39,44 +46,73 @@ interface Props {
 // ── Group badge inline styles ─────────────────────────────────────────────────
 
 function groupBadgeStyle(ifGroup: IFGroup): { background: string; color: string; border: string } {
-  if (ifGroup === 'olympic_paris')  return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
-  if (ifGroup === 'arisf')    return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
-  if (ifGroup === 'aims')     return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
+  if (ifGroup === 'olympic_paris')   return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
+  if (ifGroup === 'olympic_milano')  return { background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }
+  if (ifGroup === 'arisf')           return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
+  if (ifGroup === 'aims')            return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
   return { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PillarInsights({ federationId, federationName, federationAbbr, ifGroup }: Props) {
-  const [peer, setPeer] = useState<PeerData | null>(null)
-  const [objectives, setObjectives] = useState<PillarObjective[]>([])
-  const [insight, setInsight] = useState<string>('')
+  const [peer, setPeer]               = useState<PeerData | null>(null)
+  const [objectives, setObjectives]   = useState<PillarObjective[]>([])
+  const [insight, setInsight]         = useState<string>('')
+  const [insightAge, setInsightAge]   = useState<string | null>(null)
   const [loadingData, setLoadingData] = useState(true)
-  const [loadingAI, setLoadingAI] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadingAI, setLoadingAI]     = useState(false)
+  const [error, setError]             = useState<string | null>(null)
 
   const groupMeta = IF_GROUPS[ifGroup]
-  const badge = groupBadgeStyle(ifGroup)
+  const badge     = groupBadgeStyle(ifGroup)
 
-  // ── Load peer data ──────────────────────────────────────────────────────────
+  // ── Format relative date ───────────────────────────────────────────────────
+  function relativeDate(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime()
+    const days = Math.floor(diff / 86_400_000)
+    if (days === 0) return 'today'
+    if (days === 1) return 'yesterday'
+    if (days < 30)  return `${days}d ago`
+    return new Date(iso).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  }
+
+  // ── Load peer data + stored insight ───────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const { data, error: err } = await supabase
-        .from('worst_pillar_with_peers')
-        .select('*')
-        .eq('federation_id', federationId)
-        .maybeSingle()
+      // Run peer data and cached insight queries in parallel
+      const [peerRes, insightRes] = await Promise.all([
+        supabase
+          .from('worst_pillar_with_peers')
+          .select('*')
+          .eq('federation_id', federationId)
+          .maybeSingle(),
+        supabase
+          .from('pillar_insights')
+          .select('insight, generated_at, pillar_name')
+          .eq('federation_id', federationId)
+          .maybeSingle(),
+      ])
 
-      if (err) { setError(err.message); setLoadingData(false); return }
-      if (!data) { setLoadingData(false); return }
+      if (peerRes.error) {
+        setError(peerRes.error.message)
+        setLoadingData(false)
+        return
+      }
 
-      setPeer(data as PeerData)
+      if (!peerRes.data) {
+        setLoadingData(false)
+        return
+      }
 
+      setPeer(peerRes.data as PeerData)
+
+      // Load objectives for this pillar
       const { data: pillarRow } = await supabase
         .from('pillars')
         .select('id')
         .eq('federation_id', federationId)
-        .eq('name', data.worst_pillar_name)
+        .eq('name', peerRes.data.worst_pillar_name)
         .maybeSingle()
 
       if (pillarRow) {
@@ -88,21 +124,33 @@ export default function PillarInsights({ federationId, federationName, federatio
         if (objs) setObjectives(objs as PillarObjective[])
       }
 
+      // Apply cached insight if it exists and matches the current worst pillar
+      if (insightRes.data) {
+        const stored = insightRes.data as StoredInsight
+        if (stored.pillar_name === peerRes.data.worst_pillar_name) {
+          setInsight(stored.insight)
+          setInsightAge(stored.generated_at)
+        }
+      }
+
       setLoadingData(false)
     }
     load()
   }, [federationId])
 
-  // ── Generate AI insight ─────────────────────────────────────────────────────
-  async function generateInsight() {
+  // ── Generate (or regenerate) AI insight ───────────────────────────────────
+  const generateInsight = useCallback(async () => {
     if (!peer) return
     setLoadingAI(true)
     setInsight('')
+    setInsightAge(null)
     setError(null)
 
-    const hasPeers = peer.top_peers && peer.top_peers.length > 0
+    const hasPeers   = peer.top_peers && peer.top_peers.length > 0
     const peerSummary = hasPeers
-      ? peer.top_peers!.map((abbr, i) => `${abbr} (${peer.top_peer_names![i]}, score ${peer.top_peer_scores![i]})`).join(', ')
+      ? peer.top_peers!.map((abbr, i) =>
+          `${abbr} (${peer.top_peer_names![i]}, score ${peer.top_peer_scores![i]})`
+        ).join(', ')
       : 'no directly comparable peers found in this group'
 
     const weakObjectives = objectives
@@ -136,14 +184,32 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
       })
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
-      setInsight(json.text ?? json.error ?? 'No response.')
+      const text: string = json.text ?? json.error ?? 'No response.'
+
+      setInsight(text)
+
+      // Persist regenerated insight back to Supabase (upsert)
+      const now = new Date().toISOString()
+      setInsightAge(now)
+      await supabase.from('pillar_insights').upsert(
+        {
+          federation_id: federationId,
+          pillar_name:   peer.worst_pillar_name,
+          pillar_score:  peer.worst_pillar_score,
+          insight:       text,
+          model:         'claude-sonnet-4-20250514',
+          generated_at:  now,
+        },
+        { onConflict: 'federation_id' }
+      )
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
     }
-    setLoadingAI(false)
-  }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+    setLoadingAI(false)
+  }, [peer, objectives, federationName, federationAbbr, ifGroup, groupMeta, federationId])
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   if (loadingData) {
     return (
@@ -260,15 +326,22 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
           {insight ? (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  AI Recommendations
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    AI Recommendations
+                  </div>
+                  {insightAge && (
+                    <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)' }}>
+                      · generated {relativeDate(insightAge)}
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={generateInsight}
                   disabled={loadingAI}
                   style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}
                 >
-                  Regenerate ↺
+                  {loadingAI ? 'Regenerating…' : 'Regenerate ↺'}
                 </button>
               </div>
               <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
@@ -276,35 +349,40 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
               </div>
             </div>
           ) : (
-            <button
-              onClick={generateInsight}
-              disabled={loadingAI}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 8, border: '0.5px solid var(--border)',
-                background: 'var(--surface2)', color: 'var(--text)',
-                fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500,
-                cursor: loadingAI ? 'not-allowed' : 'pointer',
-                opacity: loadingAI ? 0.6 : 1, transition: 'opacity 0.15s',
-              }}
-            >
-              {loadingAI ? (
-                <>
-                  <svg style={{ animation: 'spin 1s linear infinite', width: 13, height: 13 }} fill="none" viewBox="0 0 24 24">
-                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
-                  </svg>
-                  Generate improvement recommendations
-                </>
-              )}
-            </button>
+            <div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                AI Recommendations
+              </div>
+              <button
+                onClick={generateInsight}
+                disabled={loadingAI}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px', borderRadius: 8, border: '0.5px solid var(--border)',
+                  background: 'var(--surface2)', color: 'var(--text)',
+                  fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500,
+                  cursor: loadingAI ? 'not-allowed' : 'pointer',
+                  opacity: loadingAI ? 0.6 : 1, transition: 'opacity 0.15s',
+                }}
+              >
+                {loadingAI ? (
+                  <>
+                    <svg style={{ animation: 'spin 1s linear infinite', width: 13, height: 13 }} fill="none" viewBox="0 0 24 24">
+                      <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
+                    </svg>
+                    No cached insight — generate now
+                  </>
+                )}
+              </button>
+            </div>
           )}
           {error && (
             <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#dc2626', marginTop: 8 }}>
