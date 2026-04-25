@@ -8,9 +8,11 @@ import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis, ResponsiveContainer, Tooltip, Legend,
 } from 'recharts'
-import { createClient } from '@supabase/supabase-js'
+// ✅ Use shared singleton — never call createClient() in a component
+import { supabase } from '@/lib/supabase'
+// ✅ Import IFGroup from canonical location only
 import { IF_GROUPS, groupBadge } from '@/lib/if-groups'
-import type { IFGroup } from '@/lib/if-groups'
+import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,13 +29,15 @@ interface GroupAvg {
   avg_score: number
 }
 
+// ✅ Stable component contract — ifGroup is required (non-nullable).
+// Callers MUST null-guard before rendering this component.
 interface Props {
   federationId: string
   federationAbbr: string
   ifGroup: IFGroup
 }
 
-// ── Short labels for the radar axes ──────────────────────────────────────────
+// ── Short labels for the radar axes ───────────────────────────────────────────
 
 const SHORT_LABEL: Record<string, string> = {
   'Governance & Integrity':    'Governance',
@@ -41,10 +45,10 @@ const SHORT_LABEL: Record<string, string> = {
   'Participation & Growth':    'Participation',
   'People & Development':      'People',
   'Reach & Engagement':        'Reach',
-  'Sustainability':            'Sustainability',
+  'Sustainability':             'Sustainability',
 }
 
-// ── Custom tooltip ────────────────────────────────────────────────────────────
+// ── Custom tooltip ─────────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null
@@ -58,7 +62,7 @@ const CustomTooltip = ({ active, payload }: any) => {
             {p.name}
           </span>
           <span className="font-bold tabular-nums" style={{ color: p.color }}>
-            {p.value != null ? Number(p.value).toFixed(1) : '—'}
+            {p.value != null ? Number(p.value).toFixed(1) : '–'}
           </span>
         </div>
       ))}
@@ -69,10 +73,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ScorecardRadar({ federationId, federationAbbr, ifGroup }: Props) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  // ✅ No createClient() here — use shared singleton imported above
   const [pillarScores, setPillarScores] = useState<PillarScore[]>([])
   const [groupAvgs, setGroupAvgs] = useState<GroupAvg[]>([])
   const [loading, setLoading] = useState(true)
@@ -147,7 +148,7 @@ export default function ScorecardRadar({ federationId, federationAbbr, ifGroup }
             axisLine={false}
           />
 
-          {/* Group average — dashed */}
+          {/* Group average – dashed */}
           <Radar
             name={avgKey}
             dataKey={avgKey}
@@ -158,7 +159,7 @@ export default function ScorecardRadar({ federationId, federationAbbr, ifGroup }
             strokeWidth={1.5}
           />
 
-          {/* This federation — solid */}
+          {/* This federation – solid */}
           <Radar
             name={fedKey}
             dataKey={fedKey}
