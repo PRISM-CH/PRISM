@@ -18,6 +18,7 @@ function isPublic(request: NextRequest): boolean {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/api/insights') ||   // keep AI endpoint accessible
+    pathname.startsWith('/api/auth') ||
     pathname === '/login'
   ) return true
 
