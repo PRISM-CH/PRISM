@@ -309,8 +309,9 @@ export default function ScorecardClient() {
       {/* ── Pillar tabs ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: '1.5rem' }}>
         {pillars.map((p, i) => {
+          const objectives = p.objectives ?? []
           const avg = Math.round(
-            p.objectives.reduce((a, o) => a + o.score, 0) / (p.objectives.length || 1)
+            objectives.reduce((a, o) => a + o.score, 0) / (objectives.length || 1)
           )
           return (
             <button key={p.id} onClick={() => setActiveIdx(i)} style={{
@@ -328,7 +329,7 @@ export default function ScorecardClient() {
               </div>
               <Bar score={avg} color={p.color} />
               <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
-                {p.objectives[0]?.trend_note || ''}
+                {objectives[0]?.trend_note || ''}
               </div>
             </button>
           )
@@ -351,7 +352,7 @@ export default function ScorecardClient() {
               </p>
             </div>
           </div>
-          {activePillar.objectives.map((obj) => (
+          {(activePillar.objectives ?? []).map((obj) => (
             <div key={obj.id} style={{ borderTop: '0.5px solid var(--border)', paddingTop: 14, paddingBottom: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start' }}>
                 <div>
