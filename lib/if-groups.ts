@@ -1,6 +1,6 @@
 // lib/if-groups.ts  ─  PRISM group constants + helpers
 
-export type IFGroup = 'olympic_paris' | 'recognized_if' | 'arisf' | 'aims'
+export type IFGroup = 'olympic_paris' | 'olympic_milano' | 'arisf' | 'aims'
 
 export interface GroupMeta {
   key: IFGroup
@@ -16,17 +16,17 @@ export const IF_GROUPS: Record<IFGroup, GroupMeta> = {
   olympic_paris: {
     key: 'olympic_paris',
     label: 'Olympic IFs – Paris 2024',
-    shortLabel: 'Olympic',
+    shortLabel: 'Summer Olympic',
     description: 'Federations on the Paris 2024 Olympic programme',
     color: '#1d4ed8',
     accent: '#93c5fd',
     order: 1,
   },
-  recognized_if: {
-    key: 'recognized_if',
-    label: 'IOC Recognised IFs',
-    shortLabel: 'Recognised',
-    description: 'IOC-recognised but not currently on the Olympic programme',
+  olympic_milano: {
+    key: 'olympic_milano',
+    label: 'Olympic IFs – Milano Cortina 2026',
+    shortLabel: 'Winter Olympic',
+    description: 'Federations on the Milano Cortina 2026 Olympic programme',
     color: '#047857',
     accent: '#6ee7b7',
     order: 2,
