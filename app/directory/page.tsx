@@ -1,23 +1,19 @@
 'use client'
-// PRISM IF Directory
-// Fetches all federations + assessments, groups them,
-// renders a filterable / sortable directory with group section headers.
+// PRISM IF Directory — inline styles throughout (no Tailwind dependency)
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-// ✅ Use shared singleton — never call createClient() in a component
 import { supabase } from '@/lib/supabase'
-import { GROUP_ORDER, IF_GROUPS, groupBadge, sortByGroup } from '@/lib/if-groups'
-// ✅ Import IFGroup from canonical location only
+import { GROUP_ORDER, IF_GROUPS, sortByGroup } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-// Local view type — only the fields this page needs from the DB join
+
 interface FederationRow {
   id: string
   name: string
   abbreviation: string
-  if_group: IFGroup | null         // nullable from DB — guard before use
+  if_group: IFGroup | null
   n_member_federations: number | null
   global_fans_millions: number | null
   overall_score: number | null
@@ -27,48 +23,59 @@ interface FederationRow {
 
 type SortKey = 'group' | 'score' | 'name' | 'size'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Group inline styles (replaces Tailwind groupBadge) ────────────────────────
 
-function scoreColor(score: number | null) {
-  if (!score) return 'text-gray-400'
-  if (score >= 80) return 'text-emerald-600'
-  if (score >= 65) return 'text-blue-600'
-  if (score >= 50) return 'text-amber-600'
-  return 'text-red-500'
+interface GroupStyle {
+  background: string
+  color: string
+  border: string
+  dot: string
+  label: string
 }
 
-function scoreBarWidth(score: number | null) {
-  return `${Math.max(0, Math.min(100, Number(score) || 0))}%`
+function groupStyle(g: IFGroup | null | undefined): GroupStyle {
+  switch (g) {
+    case 'Olympic':    return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', dot: '#3b82f6', label: 'Olympic' }
+    case 'ARISF':     return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', dot: '#22c55e', label: 'ARISF' }
+    case 'AIMS':      return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', dot: '#eab308', label: 'AIMS' }
+    case 'IWGA':      return { background: '#fdf4ff', color: '#7e22ce', border: '1px solid #e9d5ff', dot: '#a855f7', label: 'IWGA' }
+    default:          return { background: 'var(--surface2)', color: 'var(--text3)', border: '1px solid var(--border)', dot: '#9ca3af', label: g ?? '–' }
+  }
 }
 
-function scoreBarColor(score: number | null) {
-  if (!score) return 'bg-gray-200'
-  if (score >= 80) return 'bg-emerald-500'
-  if (score >= 65) return 'bg-blue-500'
-  if (score >= 50) return 'bg-amber-400'
-  return 'bg-red-400'
+// ── Score helpers ─────────────────────────────────────────────────────────────
+
+function scoreColor(score: number | null): string {
+  if (!score) return 'var(--text3)'
+  if (score >= 80) return '#16a34a'
+  if (score >= 65) return '#1d4ed8'
+  if (score >= 50) return '#b45309'
+  return '#dc2626'
+}
+
+function scoreBarColor(score: number | null): string {
+  if (!score) return 'var(--surface2)'
+  if (score >= 80) return '#22c55e'
+  if (score >= 65) return '#3b82f6'
+  if (score >= 50) return '#f59e0b'
+  return '#f87171'
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function DirectoryPage() {
-  // ✅ No createClient() here — use shared singleton imported above
   const [feds, setFeds] = useState<FederationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const [activeGroups, setActiveGroups] = useState<IFGroup[]>([])
   const [sortKey, setSortKey] = useState<SortKey>('group')
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('federations')
-        .select(`
-          id, name, abbreviation, if_group,
-          n_member_federations, global_fans_millions, access_tier,
-          assessments ( overall_score, grade )
-        `)
+        .select(`id, name, abbreviation, if_group, n_member_federations, global_fans_millions, access_tier, assessments ( overall_score, grade )`)
       if (data) {
         const flat: FederationRow[] = data.map((f: any) => ({
           ...f,
@@ -82,54 +89,34 @@ export default function DirectoryPage() {
     load()
   }, [])
 
-  // ── Filter + Sort ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...feds]
-
     if (search.trim()) {
       const q = search.toLowerCase()
-      list = list.filter(
-        (f) =>
-          f.name.toLowerCase().includes(q) ||
-          f.abbreviation.toLowerCase().includes(q)
-      )
+      list = list.filter(f => f.name.toLowerCase().includes(q) || f.abbreviation.toLowerCase().includes(q))
     }
-
     if (activeGroups.length > 0) {
-      // ✅ Null-guard: federations with null if_group are excluded when filtering
-      list = list.filter((f) => f.if_group && activeGroups.includes(f.if_group))
+      list = list.filter(f => f.if_group && activeGroups.includes(f.if_group))
     }
-
     switch (sortKey) {
-      case 'score':
-        list.sort((a, b) => (Number(b.overall_score) || 0) - (Number(a.overall_score) || 0))
-        break
-      case 'name':
-        list.sort((a, b) => a.name.localeCompare(b.name))
-        break
-      case 'size':
-        list.sort((a, b) => (b.n_member_federations || 0) - (a.n_member_federations || 0))
-        break
-      default: // 'group'
-        list = sortByGroup(list)
+      case 'score': list.sort((a, b) => (Number(b.overall_score) || 0) - (Number(a.overall_score) || 0)); break
+      case 'name':  list.sort((a, b) => a.name.localeCompare(b.name)); break
+      case 'size':  list.sort((a, b) => (b.n_member_federations || 0) - (a.n_member_federations || 0)); break
+      default:      list = sortByGroup(list)
     }
-
     return list
   }, [feds, search, activeGroups, sortKey])
 
-  // ── Group sections for 'group' sort ───────────────────────────────────────
   const grouped = useMemo(() => {
     if (sortKey !== 'group') return null
     const map: Record<string, FederationRow[]> = {}
     for (const g of GROUP_ORDER) map[g] = []
     for (const f of filtered) {
-      // ✅ Null-guard: skip federations with null if_group in grouped view
       if (f.if_group && map[f.if_group]) map[f.if_group].push(f)
     }
     return map
   }, [filtered, sortKey])
 
-  // ── Counts per group ───────────────────────────────────────────────────────
   const groupCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const f of feds) {
@@ -139,84 +126,113 @@ export default function DirectoryPage() {
   }, [feds])
 
   const toggleGroup = (g: IFGroup) =>
-    setActiveGroups((prev) =>
-      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
-    )
+    setActiveGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="text-sm text-gray-400 animate-pulse">Loading federations…</div>
-      </div>
+      <>
+        <style>{`@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}`}</style>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+          <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)', animation: 'pulse 1.5s ease-in-out infinite' }}>
+            Loading federations…
+          </div>
+        </div>
+      </>
     )
   }
 
+  const SORT_LABELS: Record<SortKey, string> = { group: 'By Group', score: 'Score ↓', name: 'A–Z', size: 'Size' }
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">IF Directory</h1>
-        <p className="text-sm text-gray-500 mt-1">
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '2rem 1.25rem 4rem' }}>
+
+      {/* ── Header ── */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>
+          IF Directory
+        </h1>
+        <p style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
           {feds.length} international federations across 4 recognition tiers
         </p>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+      {/* ── Controls row ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: '1.25rem', alignItems: 'center' }}>
+
         {/* Search */}
-        <div className="relative flex-1 max-w-xs">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 280 }}>
+          <svg
+            width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', pointerEvents: 'none' }}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
             type="text"
             placeholder="Search federations…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            onChange={e => setSearch(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            style={{
+              width: '100%', paddingLeft: 30, paddingRight: 10, paddingTop: 7, paddingBottom: 7,
+              fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)',
+              background: 'var(--surface)', border: searchFocused ? '1px solid #3b82f6' : '0.5px solid var(--border)',
+              borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
           />
         </div>
 
-        {/* Sort */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          {(['group', 'score', 'name', 'size'] as SortKey[]).map((s) => (
+        {/* Sort pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--surface2)', borderRadius: 8, padding: 3 }}>
+          {(['group', 'score', 'name', 'size'] as SortKey[]).map(s => (
             <button
               key={s}
               onClick={() => setSortKey(s)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                sortKey === s
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              style={{
+                padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500,
+                background: sortKey === s ? 'var(--surface)' : 'transparent',
+                color: sortKey === s ? 'var(--text)' : 'var(--text3)',
+                boxShadow: sortKey === s ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.15s',
+              }}
             >
-              {s === 'group' ? 'By Group' : s === 'score' ? 'Score ↓' : s === 'name' ? 'A–Z' : 'Size'}
+              {SORT_LABELS[s]}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Group filter pills */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {GROUP_ORDER.map((g) => {
+      {/* ── Group filter pills ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: '1.25rem' }}>
+        {GROUP_ORDER.map(g => {
           const meta = IF_GROUPS[g]
-          const badge = groupBadge(g)
-          const active = activeGroups.length === 0 || activeGroups.includes(g)
+          const st = groupStyle(g as IFGroup)
+          const active = activeGroups.length === 0 || activeGroups.includes(g as IFGroup)
           return (
             <button
               key={g}
-              onClick={() => toggleGroup(g)}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                active
-                  ? `${badge.bg} ${badge.text} ${badge.border}`
-                  : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-              }`}
+              onClick={() => toggleGroup(g as IFGroup)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 99,
+                fontFamily: 'sans-serif', fontSize: 11, fontWeight: 600,
+                background: active ? st.background : 'var(--surface)',
+                color: active ? st.color : 'var(--text3)',
+                border: active ? st.border : '0.5px solid var(--border)',
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${active ? badge.dot : 'bg-gray-300'}`} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: active ? st.dot : 'var(--border)', flexShrink: 0 }} />
               {meta.shortLabel}
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                active ? `${badge.bg} ${badge.text}` : 'bg-gray-100 text-gray-400'
-              }`}>
+              <span style={{
+                padding: '1px 6px', borderRadius: 99,
+                fontSize: 10, fontWeight: 700,
+                background: active ? 'rgba(0,0,0,0.07)' : 'var(--surface2)',
+                color: active ? st.color : 'var(--text3)',
+              }}>
                 {groupCounts[g] || 0}
               </span>
             </button>
@@ -225,65 +241,60 @@ export default function DirectoryPage() {
         {activeGroups.length > 0 && (
           <button
             onClick={() => setActiveGroups([])}
-            className="text-xs text-gray-400 hover:text-gray-600 px-2"
+            style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 6px' }}
           >
             Clear ×
           </button>
         )}
       </div>
 
-      {/* Results count */}
-      <p className="text-xs text-gray-400 mb-4">
-        {filtered.length === feds.length
-          ? `${feds.length} federations`
-          : `${filtered.length} of ${feds.length} federations`}
+      {/* ── Results count ── */}
+      <p style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginBottom: '1rem' }}>
+        {filtered.length === feds.length ? `${feds.length} federations` : `${filtered.length} of ${feds.length} federations`}
       </p>
 
-      {/* Grouped sections */}
+      {/* ── Grouped sections ── */}
       {grouped ? (
-        <div className="space-y-10">
-          {GROUP_ORDER.map((g) => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+          {GROUP_ORDER.map(g => {
             const items = grouped[g]
-            if (items.length === 0) return null
+            if (!items || items.length === 0) return null
             const meta = IF_GROUPS[g]
-            const badge = groupBadge(g)
+            const st = groupStyle(g as IFGroup)
             return (
               <section key={g}>
                 {/* Section header */}
-                <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-100">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badge.bg} ${badge.text} ${badge.border}`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${badge.dot}`} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, paddingBottom: 10, borderBottom: '0.5px solid var(--border)' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '4px 10px', borderRadius: 99,
+                    fontFamily: 'sans-serif', fontSize: 11, fontWeight: 700,
+                    background: st.background, color: st.color, border: st.border,
+                  }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: st.dot }} />
                     {meta.label}
                   </span>
-                  <span className="text-xs text-gray-400">{items.length} federations</span>
-                  <span className="text-xs text-gray-300 hidden sm:inline">·</span>
-                  <span className="text-xs text-gray-400 hidden sm:inline">{meta.description}</span>
+                  <span style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)' }}>{items.length} federations</span>
+                  <span style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)' }}>· {meta.description}</span>
                 </div>
 
-                {/* Federation cards grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {items.map((fed) => (
-                    <FederationCard key={fed.id} fed={fed} />
-                  ))}
+                {/* Cards grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                  {items.map(fed => <FederationCard key={fed.id} fed={fed} />)}
                 </div>
               </section>
             )
           })}
         </div>
       ) : (
-        /* Flat list for non-group sorts */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {filtered.map((fed) => (
-            <FederationCard key={fed.id} fed={fed} />
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+          {filtered.map(fed => <FederationCard key={fed.id} fed={fed} />)}
         </div>
       )}
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-sm">No federations match your search.</p>
+        <div style={{ textAlign: 'center', padding: '4rem 0', fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)' }}>
+          No federations match your search.
         </div>
       )}
     </div>
@@ -293,55 +304,83 @@ export default function DirectoryPage() {
 // ── Federation Card ───────────────────────────────────────────────────────────
 
 function FederationCard({ fed }: { fed: FederationRow }) {
-  const badge = groupBadge(fed.if_group)
-  const isPreview = fed.access_tier === 'preview'
+  const [hovered, setHovered] = useState(false)
+  const st = groupStyle(fed.if_group)
+  const score = fed.overall_score
+  const barWidth = `${Math.max(0, Math.min(100, Number(score) || 0))}%`
 
   return (
     <Link
       href={`/directory/${fed.id}`}
-      className="group relative flex flex-col bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-md transition-all duration-150"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', flexDirection: 'column', textDecoration: 'none',
+        background: 'var(--surface)', borderRadius: 12, padding: '14px',
+        border: hovered ? '1px solid #93c5fd' : '0.5px solid var(--border)',
+        boxShadow: hovered ? '0 4px 12px rgba(0,0,0,0.06)' : 'none',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        position: 'relative',
+      }}
     >
-      {/* Preview lock badge */}
-      {isPreview && (
-        <span className="absolute top-3 right-3 text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+      {/* Preview badge */}
+      {fed.access_tier === 'preview' && (
+        <span style={{
+          position: 'absolute', top: 10, right: 10,
+          fontFamily: 'sans-serif', fontSize: 9, fontWeight: 700,
+          color: 'var(--text3)', background: 'var(--surface2)',
+          padding: '2px 6px', borderRadius: 4,
+        }}>
           PREVIEW
         </span>
       )}
 
-      {/* Abbreviation + name */}
-      <div className="mb-3">
-        <div className="text-lg font-black text-gray-900 tracking-tight group-hover:text-blue-700 transition-colors">
+      {/* Abbr + name */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{
+          fontFamily: 'sans-serif', fontSize: 18, fontWeight: 900,
+          color: hovered ? '#1d4ed8' : 'var(--text)',
+          letterSpacing: '-0.02em', lineHeight: 1, transition: 'color 0.15s',
+        }}>
           {fed.abbreviation}
         </div>
-        <div className="text-xs text-gray-500 leading-snug mt-0.5 line-clamp-2">{fed.name}</div>
+        <div style={{
+          fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text2)', marginTop: 3,
+          lineHeight: 1.4,
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>
+          {fed.name}
+        </div>
       </div>
 
-      {/* Score bar */}
-      <div className="mb-2">
-        <div className="flex items-baseline justify-between mb-1">
-          <span className={`text-xl font-bold tabular-nums ${scoreColor(fed.overall_score)}`}>
-            {fed.overall_score != null ? Number(fed.overall_score).toFixed(1) : '–'}
+      {/* Score */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 5 }}>
+          <span style={{ fontFamily: 'sans-serif', fontSize: 20, fontWeight: 700, color: scoreColor(score), fontVariantNumeric: 'tabular-nums' }}>
+            {score != null ? Number(score).toFixed(1) : '–'}
           </span>
           {fed.grade && (
-            <span className="text-xs font-semibold text-gray-500">{fed.grade}</span>
+            <span style={{ fontFamily: 'sans-serif', fontSize: 11, fontWeight: 600, color: 'var(--text3)' }}>
+              {fed.grade}
+            </span>
           )}
         </div>
-        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${scoreBarColor(fed.overall_score)}`}
-            style={{ width: scoreBarWidth(fed.overall_score) }}
-          />
+        <div style={{ height: 5, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{ width: barWidth, height: '100%', background: scoreBarColor(score), borderRadius: 99, transition: 'width 0.4s ease' }} />
         </div>
       </div>
 
-      {/* Footer: group badge + member count */}
-      <div className="flex items-center justify-between mt-auto pt-2">
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
-          {/* ✅ Null-guard: show raw value if no meta found */}
+      {/* Footer */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 6 }}>
+        <span style={{
+          fontFamily: 'sans-serif', fontSize: 10, fontWeight: 700,
+          padding: '2px 8px', borderRadius: 99,
+          background: st.background, color: st.color, border: st.border,
+        }}>
           {IF_GROUPS[fed.if_group!]?.shortLabel ?? fed.if_group ?? '–'}
         </span>
         {fed.n_member_federations && (
-          <span className="text-[10px] text-gray-400">
+          <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)' }}>
             {fed.n_member_federations} NFs
           </span>
         )}
