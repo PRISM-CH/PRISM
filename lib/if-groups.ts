@@ -51,7 +51,7 @@ export const IF_GROUPS: Record<IFGroup, GroupMeta> = {
   },
 }
 
-export const GROUP_ORDER: IFGroup[] = ['olympic_paris', 'recognized_if', 'arisf', 'aims']
+export const GROUP_ORDER: IFGroup[] = ['olympic_paris', 'olympic_milano', 'arisf', 'aims']
 
 /** Sort federations: group order first, then overall_score desc within group */
 export function sortByGroup<T extends { if_group: IFGroup | null; overall_score?: number | null }>(
@@ -71,7 +71,7 @@ export function groupBadge(group: IFGroup | null | undefined): {
 } {
   const classes: Record<IFGroup, { bg: string; text: string; border: string; dot: string }> = {
     olympic_paris:  { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-500'   },
-    recognized_if:  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+    olympic_milano:  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
     arisf:          { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200',  dot: 'bg-violet-500'  },
     aims:           { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500'   },
   }
