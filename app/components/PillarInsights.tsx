@@ -5,9 +5,10 @@
 // Uses worst_pillar_with_peers view (already in Supabase) + Claude API.
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+// ✅ Use shared singleton — never call createClient() in a component
+import { supabase } from '@/lib/supabase'
 import { IF_GROUPS, groupBadge } from '@/lib/if-groups'
-import type { IFGroup } from '@/lib/if-groups'
+import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ interface PillarObjective {
   description: string | null
 }
 
+// ✅ Stable component contract — federation-scoped, ifGroup is required.
+// Callers MUST null-guard before rendering this component.
 interface Props {
   federationId: string
   federationName: string
@@ -40,10 +43,7 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PillarInsights({ federationId, federationName, federationAbbr, ifGroup }: Props) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  // ✅ No createClient() here — use shared singleton imported above
   const [peer, setPeer] = useState<PeerData | null>(null)
   const [objectives, setObjectives] = useState<PillarObjective[]>([])
   const [insight, setInsight] = useState<string>('')
@@ -54,42 +54,47 @@ export default function PillarInsights({ federationId, federationName, federatio
   const groupMeta = IF_GROUPS[ifGroup]
   const badge = groupBadge(ifGroup)
 
-  // ── Load peer data ─────────────────────────────────────────────────────────
+  // ── Load peer data ──────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
+      // ✅ Use maybeSingle() instead of single() — handles missing rows safely
       const { data, error: err } = await supabase
         .from('worst_pillar_with_peers')
         .select('*')
         .eq('federation_id', federationId)
-        .single()
+        .maybeSingle()
 
       if (err) { setError(err.message); setLoadingData(false); return }
-      if (data) {
-        setPeer(data as PeerData)
 
-        // Also fetch the objectives for the worst pillar of THIS federation
-        const { data: pillars } = await supabase
-          .from('pillars')
-          .select('id')
-          .eq('federation_id', federationId)
-          .eq('name', data.worst_pillar_name)
-          .single()
+      // ✅ Null-check before using data
+      if (!data) { setLoadingData(false); return }
 
-        if (pillars) {
-          const { data: objs } = await supabase
-            .from('objectives')
-            .select('name, score, description')
-            .eq('pillar_id', pillars.id)
-            .order('score', { ascending: true })
-          if (objs) setObjectives(objs as PillarObjective[])
-        }
+      setPeer(data as PeerData)
+
+      // Also fetch the objectives for the worst pillar of THIS federation
+      // ✅ Use maybeSingle() — pillar may not exist
+      const { data: pillarRow } = await supabase
+        .from('pillars')
+        .select('id')
+        .eq('federation_id', federationId)
+        .eq('name', data.worst_pillar_name)
+        .maybeSingle()
+
+      if (pillarRow) {
+        const { data: objs } = await supabase
+          .from('objectives')
+          .select('name, score, description')
+          .eq('pillar_id', pillarRow.id)
+          .order('score', { ascending: true })
+        if (objs) setObjectives(objs as PillarObjective[])
       }
+
       setLoadingData(false)
     }
     load()
   }, [federationId])
 
-  // ── Generate AI insight ───────────────────────────────────────────────────
+  // ── Generate AI insight ────────────────────────────────────────────────────
   async function generateInsight() {
     if (!peer) return
     setLoadingAI(true)
@@ -111,7 +116,7 @@ Analyse the following performance gap and produce 3–4 specific, actionable rec
 
 FEDERATION: ${federationName} (${federationAbbr})
 GROUP: ${groupMeta?.label ?? ifGroup} 
-WORST PILLAR: ${peer.worst_pillar_name} — score ${peer.worst_pillar_score}/100
+WORST PILLAR: ${peer.worst_pillar_name} – score ${peer.worst_pillar_score}/100
 WEAKEST OBJECTIVES WITHIN THIS PILLAR:
 ${weakObjectives || '(objectives not available)'}
 
