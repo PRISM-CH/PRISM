@@ -294,10 +294,10 @@ export default function ScorecardClient() {
       {/* ── Stats strip ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: '2rem' }}>
         {[
-          { label: 'Member federations', val: `${federation.n_member_federations}` },
-          { label: 'Competitions / year', val: `${federation.n_competitions_per_year.toLocaleString()}+` },
-          { label: 'Global fans', val: `${(federation.global_fans_millions / 1000).toFixed(1)}bn` },
-          { label: 'Economic impact', val: `€${federation.economic_impact_bn_eur}bn` },
+          { label: 'Member federations', val: federation.n_member_federations != null ? `${federation.n_member_federations}` : '—' },
+          { label: 'Competitions / year', val: federation.n_competitions_per_year != null ? `${federation.n_competitions_per_year.toLocaleString()}+` : '—' },
+          { label: 'Global fans', val: federation.global_fans_millions != null ? `${(federation.global_fans_millions / 1000).toFixed(1)}bn` : '—' },
+          { label: 'Economic impact', val: federation.economic_impact_bn_eur != null ? `€${federation.economic_impact_bn_eur}bn` : '—' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--surface2)', borderRadius: 6, padding: '12px 14px' }}>
             <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{s.label}</div>
