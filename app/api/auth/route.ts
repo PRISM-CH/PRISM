@@ -1,3 +1,4 @@
+// app/api/auth/route.ts
 // Validates the submitted password against PRISM_PASSWORD env var.
 // On success, sets an httpOnly cookie that middleware will accept.
 
@@ -17,7 +18,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'PRISM_PASSWORD env var not set' }, { status: 500 })
   }
 
-  if (password !== correct) {
+  if (password.trim() !== correct.trim()) {
+    // Remove this debug line once working
+    console.log(`[auth] submitted="${password}" env="${correct}" match=${password.trim() === correct.trim()}`)
     return NextResponse.json({ error: 'Incorrect password' }, { status: 401 })
   }
 
