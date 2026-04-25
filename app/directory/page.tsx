@@ -5,10 +5,10 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-// Use shared singleton — never call createClient() in a component
+// ✅ Use shared singleton — never call createClient() in a component
 import { supabase } from '@/lib/supabase'
 import { GROUP_ORDER, IF_GROUPS, groupBadge, sortByGroup } from '@/lib/if-groups'
-// Import IFGroup from canonical location only
+// ✅ Import IFGroup from canonical location only
 import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
