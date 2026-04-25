@@ -35,10 +35,9 @@ interface GroupStyle {
 
 function groupStyle(g: IFGroup | null | undefined): GroupStyle {
   switch (g) {
-    case 'Olympic':    return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', dot: '#3b82f6', label: 'Olympic' }
-    case 'ARISF':     return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', dot: '#22c55e', label: 'ARISF' }
-    case 'AIMS':      return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', dot: '#eab308', label: 'AIMS' }
-    case 'IWGA':      return { background: '#fdf4ff', color: '#7e22ce', border: '1px solid #e9d5ff', dot: '#a855f7', label: 'IWGA' }
+    case 'olympic_paris':    return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', dot: '#3b82f6', label: 'Olympic' }
+    case 'arisf':     return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', dot: '#22c55e', label: 'ARISF' }
+    case 'aims':      return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', dot: '#eab308', label: 'AIMS' }
     default:          return { background: 'var(--surface2)', color: 'var(--text3)', border: '1px solid var(--border)', dot: '#9ca3af', label: g ?? '–' }
   }
 }
