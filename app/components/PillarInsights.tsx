@@ -1,13 +1,11 @@
 'use client'
 // components/PillarInsights.tsx  ─  PRISM
-// Shows an IF's worst-performing pillar and generates AI recommendations
-// based on what similar-sized, same-group IFs do better on that pillar.
-// Uses worst_pillar_with_peers view (already in Supabase) + Claude API.
+// Shows an IF's worst-performing pillar and generates AI recommendations.
+// Uses worst_pillar_with_peers view + Claude API via /api/insights.
 
 import { useEffect, useState } from 'react'
-// ✅ Use shared singleton — never call createClient() in a component
 import { supabase } from '@/lib/supabase'
-import { IF_GROUPS, groupBadge } from '@/lib/if-groups'
+import { IF_GROUPS } from '@/lib/if-groups'
 import type { IFGroup } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,8 +29,6 @@ interface PillarObjective {
   description: string | null
 }
 
-// ✅ Stable component contract — federation-scoped, ifGroup is required.
-// Callers MUST null-guard before rendering this component.
 interface Props {
   federationId: string
   federationName: string
@@ -40,10 +36,18 @@ interface Props {
   ifGroup: IFGroup
 }
 
+// ── Group badge inline styles ─────────────────────────────────────────────────
+
+function groupBadgeStyle(ifGroup: IFGroup): { background: string; color: string; border: string } {
+  if (ifGroup === 'Olympic')  return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
+  if (ifGroup === 'ARISF')    return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
+  if (ifGroup === 'AIMS')     return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
+  return { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PillarInsights({ federationId, federationName, federationAbbr, ifGroup }: Props) {
-  // ✅ No createClient() here — use shared singleton imported above
   const [peer, setPeer] = useState<PeerData | null>(null)
   const [objectives, setObjectives] = useState<PillarObjective[]>([])
   const [insight, setInsight] = useState<string>('')
@@ -52,12 +56,11 @@ export default function PillarInsights({ federationId, federationName, federatio
   const [error, setError] = useState<string | null>(null)
 
   const groupMeta = IF_GROUPS[ifGroup]
-  const badge = groupBadge(ifGroup)
+  const badge = groupBadgeStyle(ifGroup)
 
   // ── Load peer data ──────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      // ✅ Use maybeSingle() instead of single() — handles missing rows safely
       const { data, error: err } = await supabase
         .from('worst_pillar_with_peers')
         .select('*')
@@ -65,14 +68,10 @@ export default function PillarInsights({ federationId, federationName, federatio
         .maybeSingle()
 
       if (err) { setError(err.message); setLoadingData(false); return }
-
-      // ✅ Null-check before using data
       if (!data) { setLoadingData(false); return }
 
       setPeer(data as PeerData)
 
-      // Also fetch the objectives for the worst pillar of THIS federation
-      // ✅ Use maybeSingle() — pillar may not exist
       const { data: pillarRow } = await supabase
         .from('pillars')
         .select('id')
@@ -94,7 +93,7 @@ export default function PillarInsights({ federationId, federationName, federatio
     load()
   }, [federationId])
 
-  // ── Generate AI insight ────────────────────────────────────────────────────
+  // ── Generate AI insight ─────────────────────────────────────────────────────
   async function generateInsight() {
     if (!peer) return
     setLoadingAI(true)
@@ -135,143 +134,186 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       })
+      if (!res.ok) throw new Error(`API error: ${res.status}`)
       const json = await res.json()
       setInsight(json.text ?? json.error ?? 'No response.')
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Unknown error')
     }
     setLoadingAI(false)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
   if (loadingData) {
-    return <div className="text-sm text-gray-400 animate-pulse py-4">Loading insight data…</div>
+    return (
+      <>
+        <style>{`@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}`}</style>
+        <div style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text3)', padding: '1rem 0', animation: 'pulse 1.5s ease-in-out infinite' }}>
+          Loading insight data…
+        </div>
+      </>
+    )
   }
 
   if (!peer) {
-    return <div className="text-sm text-gray-400 py-4">No pillar data available.</div>
+    return (
+      <div style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text3)', padding: '1rem 0' }}>
+        No pillar data available.
+      </div>
+    )
   }
 
   const hasPeers = peer.top_peers && peer.top_peers.length > 0
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-gray-900">Priority Improvement Area</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Lowest-scoring pillar and peer-based recommendations
-          </p>
-        </div>
-        <span className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
-          {groupMeta?.shortLabel}
-        </span>
-      </div>
+    <>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      {/* Worst pillar highlight */}
-      <div className="px-5 py-4 bg-red-50 border-b border-red-100">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-bold text-red-700">{peer.worst_pillar_name}</span>
-          <span className="text-xl font-black tabular-nums text-red-600">
-            {Number(peer.worst_pillar_score).toFixed(1)}
-            <span className="text-xs font-medium text-red-400">/100</span>
+      <div style={{
+        background: 'var(--surface)', border: '0.5px solid var(--border)',
+        borderRadius: 12, overflow: 'hidden', marginBottom: '1.5rem',
+      }}>
+
+        {/* ── Header ── */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+          padding: '1rem 1.25rem', borderBottom: '0.5px solid var(--border)',
+        }}>
+          <div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+              Priority Improvement Area
+            </div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+              Lowest-scoring pillar and peer-based recommendations
+            </div>
+          </div>
+          <span style={{
+            flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '3px 8px',
+            borderRadius: 99, ...badge,
+          }}>
+            {groupMeta?.shortLabel ?? ifGroup}
           </span>
         </div>
-        <div className="h-1.5 bg-red-100 rounded-full">
-          <div
-            className="h-full bg-red-400 rounded-full"
-            style={{ width: `${peer.worst_pillar_score}%` }}
-          />
+
+        {/* ── Worst pillar highlight ── */}
+        <div style={{ padding: '1rem 1.25rem', background: '#fef2f2', borderBottom: '0.5px solid #fee2e2' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontFamily: 'sans-serif', fontSize: 13, fontWeight: 700, color: '#b91c1c' }}>
+              {peer.worst_pillar_name}
+            </span>
+            <span style={{ fontFamily: 'sans-serif', fontSize: 20, fontWeight: 900, color: '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+              {Number(peer.worst_pillar_score).toFixed(1)}
+              <span style={{ fontSize: 11, fontWeight: 500, color: '#f87171' }}>/100</span>
+            </span>
+          </div>
+
+          {/* Score bar */}
+          <div style={{ height: 6, background: '#fee2e2', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: `${peer.worst_pillar_score}%`, height: '100%', background: '#f87171', borderRadius: 99 }} />
+          </div>
+
+          {/* Weakest objectives */}
+          {objectives.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                Lowest objectives
+              </div>
+              {objectives.slice(0, 3).map((o) => (
+                <div key={o.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontFamily: 'sans-serif', fontSize: 12, color: '#b91c1c', marginBottom: 4 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{o.name}</span>
+                  <span style={{ fontWeight: 700, marginLeft: 8, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{o.score}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Weakest objectives */}
-        {objectives.length > 0 && (
-          <div className="mt-3 space-y-1">
-            <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Lowest objectives</p>
-            {objectives.slice(0, 3).map((o) => (
-              <div key={o.name} className="flex items-center justify-between text-xs text-red-700">
-                <span className="truncate max-w-[240px]">{o.name}</span>
-                <span className="font-bold ml-2 tabular-nums">{o.score}</span>
-              </div>
-            ))}
+        {/* ── Peer benchmarks ── */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '0.5px solid var(--border)' }}>
+          <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+            Top peers on this pillar (similar size · same group)
           </div>
-        )}
-      </div>
-
-      {/* Peer benchmarks */}
-      <div className="px-5 py-4 border-b border-gray-100">
-        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-          Top peers on this pillar (similar size · same group)
-        </p>
-        {hasPeers ? (
-          <div className="space-y-1.5">
-            {peer.top_peers!.map((abbr, i) => (
-              <div key={abbr} className="flex items-center gap-2">
-                <span className="text-xs font-bold text-gray-700 w-16 shrink-0">{abbr}</span>
-                <div className="flex-1 h-1.5 bg-gray-100 rounded-full">
-                  <div
-                    className="h-full bg-emerald-400 rounded-full"
-                    style={{ width: `${peer.top_peer_scores![i]}%` }}
-                  />
+          {hasPeers ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {peer.top_peers!.map((abbr, i) => (
+                <div key={abbr} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontFamily: 'sans-serif', fontSize: 12, fontWeight: 700, color: 'var(--text)', width: 52, flexShrink: 0 }}>{abbr}</span>
+                  <div style={{ flex: 1, height: 6, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ width: `${peer.top_peer_scores![i]}%`, height: '100%', background: '#34d399', borderRadius: 99 }} />
+                  </div>
+                  <span style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text2)', width: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {Number(peer.top_peer_scores![i]).toFixed(0)}
+                  </span>
                 </div>
-                <span className="text-xs tabular-nums text-gray-500 w-8 text-right">
-                  {Number(peer.top_peer_scores![i]).toFixed(0)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">No directly comparable peers in this group.</p>
-        )}
-      </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'sans-serif', fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>
+              No directly comparable peers in this group.
+            </div>
+          )}
+        </div>
 
-      {/* AI insight section */}
-      <div className="px-5 py-4">
-        {insight ? (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                AI Recommendations
-              </p>
-              <button
-                onClick={generateInsight}
-                disabled={loadingAI}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Regenerate ↺
-              </button>
+        {/* ── AI insight section ── */}
+        <div style={{ padding: '1rem 1.25rem' }}>
+          {insight ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  AI Recommendations
+                </div>
+                <button
+                  onClick={generateInsight}
+                  disabled={loadingAI}
+                  style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}
+                >
+                  Regenerate ↺
+                </button>
+              </div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                {insight}
+              </div>
             </div>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {insight}
+          ) : (
+            <button
+              onClick={generateInsight}
+              disabled={loadingAI}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 8, border: '0.5px solid var(--border)',
+                background: 'var(--surface2)', color: 'var(--text)',
+                fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500,
+                cursor: loadingAI ? 'not-allowed' : 'pointer',
+                opacity: loadingAI ? 0.6 : 1, transition: 'opacity 0.15s',
+              }}
+            >
+              {loadingAI ? (
+                <>
+                  <svg style={{ animation: 'spin 1s linear infinite', width: 13, height: 13 }} fill="none" viewBox="0 0 24 24">
+                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
+                  </svg>
+                  Generate improvement recommendations
+                </>
+              )}
+            </button>
+          )}
+          {error && (
+            <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#dc2626', marginTop: 8 }}>
+              {error}
             </div>
-          </div>
-        ) : (
-          <button
-            onClick={generateInsight}
-            disabled={loadingAI}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            {loadingAI ? (
-              <>
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Generating recommendations…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
-                </svg>
-                Generate Improvement Recommendations
-              </>
-            )}
-          </button>
-        )}
-        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+          )}
+        </div>
+
       </div>
-    </div>
+    </>
   )
 }
