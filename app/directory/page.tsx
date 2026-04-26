@@ -23,7 +23,7 @@ interface FederationRow {
 
 type SortKey = 'group' | 'score' | 'name' | 'size'
 
-// ── Group inline styles (replaces Tailwind groupBadge) ────────────────────────
+// ── Group inline styles ───────────────────────────────────────────────────────
 
 interface GroupStyle {
   background: string
@@ -35,10 +35,11 @@ interface GroupStyle {
 
 function groupStyle(g: IFGroup | null | undefined): GroupStyle {
   switch (g) {
-    case 'olympic_paris':    return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', dot: '#3b82f6', label: 'Olympic' }
-    case 'arisf':     return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', dot: '#22c55e', label: 'ARISF' }
-    case 'aims':      return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', dot: '#eab308', label: 'AIMS' }
-    default:          return { background: 'var(--surface2)', color: 'var(--text3)', border: '1px solid var(--border)', dot: '#9ca3af', label: g ?? '–' }
+    case 'olympic_paris':   return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', dot: '#3b82f6', label: 'Olympic Paris' }
+    case 'olympic_milano':  return { background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', dot: '#0ea5e9', label: 'Olympic Milano' }
+    case 'arisf':           return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', dot: '#22c55e', label: 'ARISF' }
+    case 'aims':            return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', dot: '#eab308', label: 'AIMS' }
+    default:                return { background: 'var(--surface2)', color: 'var(--text3)', border: '1px solid var(--border)', dot: '#9ca3af', label: g ?? '–' }
   }
 }
 
@@ -310,7 +311,7 @@ function FederationCard({ fed }: { fed: FederationRow }) {
 
   return (
     <Link
-      href={`/directory/${fed.id}`}
+      href={`/?fed=${fed.abbreviation}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
