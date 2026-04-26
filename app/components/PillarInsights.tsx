@@ -1,8 +1,13 @@
 'use client'
-// components/PillarInsights.tsx  ─  PRISM
-// Loads pre-generated AI recommendations from pillar_insights table.
-// Falls back to on-demand generation if no cached insight exists.
-// Keeps Priority Improvement Area + Top Peers sections unchanged.
+// components/PillarInsights.tsx  ─  PRISM  v2
+//
+// Changes from v1:
+//   • Reads from `recommendations` table (SMART records) instead of flat `pillar_insights` text
+//   • Calls `generate-recommendations` Edge Function (returns structured JSON per rec)
+//   • Displays impact_type + impact_magnitude badges (ImpactBadge)
+//   • Shows per-pillar group rank from `worst_pillar_with_peers` (unchanged view)
+//   • Backwards-compatible: still shows cached pillar_insights text as fallback when
+//     no recs exist yet (graceful degradation during migration)
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -30,6 +35,18 @@ interface PillarObjective {
   description: string | null
 }
 
+interface Recommendation {
+  id: string
+  action: string
+  rationale: string | null
+  kpi: string | null
+  deadline: string | null
+  impact_type: string
+  impact_magnitude: string
+  display_order: number
+}
+
+// Legacy fallback shape (pillar_insights table)
 interface StoredInsight {
   insight: string
   generated_at: string
@@ -43,31 +60,72 @@ interface Props {
   ifGroup: IFGroup
 }
 
-// ── Group badge inline styles ─────────────────────────────────────────────────
+// ── Impact/Magnitude maps ─────────────────────────────────────────────────────
+
+const IMPACT: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  olympic_position: { label: 'Olympic Position', color: '#00C9A7', bg: '#00C9A71A', icon: '🏅' },
+  exclusion_risk:   { label: 'Exclusion Risk',   color: '#EF4444', bg: '#EF44441A', icon: '⚠️' },
+  ioc_funding:      { label: 'IOC Funding',       color: '#F59E0B', bg: '#F59E0B1A', icon: '💰' },
+  sponsorship:      { label: 'Sponsorship',       color: '#A78BFA', bg: '#A78BFA1A', icon: '📈' },
+  governance:       { label: 'Governance',        color: '#60A5FA', bg: '#60A5FA1A', icon: '🏛️' },
+}
+
+const MAGNITUDE: Record<string, { label: string; color: string; dot: string }> = {
+  critical: { label: 'Critical', color: '#EF4444', dot: '#EF4444' },
+  high:     { label: 'High',     color: '#F59E0B', dot: '#F59E0B' },
+  medium:   { label: 'Medium',   color: '#60A5FA', dot: '#60A5FA' },
+  low:      { label: 'Low',      color: '#6B7FA3', dot: '#6B7FA3' },
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function ImpactBadge({ type, magnitude }: { type: string; magnitude: string }) {
+  const imp = IMPACT[type] ?? IMPACT.governance
+  const mag = MAGNITUDE[magnitude] ?? MAGNITUDE.medium
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span style={{
+        background: imp.bg, color: imp.color, border: `1px solid ${imp.color}40`,
+        borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
+        display: 'flex', alignItems: 'center', gap: 4,
+      }}>
+        {imp.icon} {imp.label}
+      </span>
+      <span style={{
+        background: `${mag.dot}15`, color: mag.color,
+        borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 600,
+        display: 'flex', alignItems: 'center', gap: 3,
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: mag.dot, display: 'inline-block' }} />
+        {mag.label}
+      </span>
+    </div>
+  )
+}
 
 function groupBadgeStyle(ifGroup: IFGroup): { background: string; color: string; border: string } {
-  if (ifGroup === 'olympic_paris')   return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
-  if (ifGroup === 'olympic_milano')  return { background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }
-  if (ifGroup === 'arisf')           return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
-  if (ifGroup === 'aims')            return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
+  if (ifGroup === 'olympic_paris')  return { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }
+  if (ifGroup === 'olympic_milano') return { background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }
+  if (ifGroup === 'arisf')          return { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }
+  if (ifGroup === 'aims')           return { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a' }
   return { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)' }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PillarInsights({ federationId, federationName, federationAbbr, ifGroup }: Props) {
-  const [peer, setPeer]               = useState<PeerData | null>(null)
-  const [objectives, setObjectives]   = useState<PillarObjective[]>([])
-  const [insight, setInsight]         = useState<string>('')
-  const [insightAge, setInsightAge]   = useState<string | null>(null)
-  const [loadingData, setLoadingData] = useState(true)
-  const [loadingAI, setLoadingAI]     = useState(false)
-  const [error, setError]             = useState<string | null>(null)
+  const [peer, setPeer]                   = useState<PeerData | null>(null)
+  const [objectives, setObjectives]       = useState<PillarObjective[]>([])
+  const [recs, setRecs]                   = useState<Recommendation[]>([])
+  const [legacyInsight, setLegacyInsight] = useState<string>('')         // fallback plain text
+  const [insightAge, setInsightAge]       = useState<string | null>(null)
+  const [loadingData, setLoadingData]     = useState(true)
+  const [loadingRecs, setLoadingRecs]     = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
 
   const groupMeta = IF_GROUPS[ifGroup]
   const badge     = groupBadgeStyle(ifGroup)
 
-  // ── Format relative date ───────────────────────────────────────────────────
   function relativeDate(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime()
     const days = Math.floor(diff / 86_400_000)
@@ -77,10 +135,12 @@ export default function PillarInsights({ federationId, federationName, federatio
     return new Date(iso).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
   }
 
-  // ── Load peer data + stored insight ───────────────────────────────────────
+  // ── Load peer data + cached recs (+ legacy insight fallback) ──────────────
   useEffect(() => {
     async function load() {
-      // Run peer data and cached insight queries in parallel
+      setLoadingData(true)
+      setError(null)
+
       const [peerRes, insightRes] = await Promise.all([
         supabase
           .from('worst_pillar_with_peers')
@@ -99,20 +159,20 @@ export default function PillarInsights({ federationId, federationName, federatio
         setLoadingData(false)
         return
       }
-
       if (!peerRes.data) {
         setLoadingData(false)
         return
       }
 
-      setPeer(peerRes.data as PeerData)
+      const peerData = peerRes.data as PeerData
+      setPeer(peerData)
 
-      // Load objectives for this pillar
+      // Load objectives for worst pillar
       const { data: pillarRow } = await supabase
         .from('pillars')
         .select('id')
         .eq('federation_id', federationId)
-        .eq('name', peerRes.data.worst_pillar_name)
+        .eq('name', peerData.worst_pillar_name)
         .maybeSingle()
 
       if (pillarRow) {
@@ -124,11 +184,21 @@ export default function PillarInsights({ federationId, federationName, federatio
         if (objs) setObjectives(objs as PillarObjective[])
       }
 
-      // Apply cached insight if it exists and matches the current worst pillar
-      if (insightRes.data) {
+      // Load structured recommendations from new table
+      const { data: recsData } = await supabase
+        .from('recommendations')
+        .select('*')
+        .eq('federation_id', federationId)
+        .eq('pillar_slug', peerData.worst_pillar_slug)
+        .order('display_order')
+
+      if (recsData && recsData.length > 0) {
+        setRecs(recsData as Recommendation[])
+      } else if (insightRes.data) {
+        // Fallback: show legacy flat insight text
         const stored = insightRes.data as StoredInsight
-        if (stored.pillar_name === peerRes.data.worst_pillar_name) {
-          setInsight(stored.insight)
+        if (stored.pillar_name === peerData.worst_pillar_name) {
+          setLegacyInsight(stored.insight)
           setInsightAge(stored.generated_at)
         }
       }
@@ -138,76 +208,42 @@ export default function PillarInsights({ federationId, federationName, federatio
     load()
   }, [federationId])
 
-  // ── Generate (or regenerate) AI insight ───────────────────────────────────
-  const generateInsight = useCallback(async () => {
+  // ── Generate / regenerate via Edge Function ───────────────────────────────
+  const generateRecs = useCallback(async () => {
     if (!peer) return
-    setLoadingAI(true)
-    setInsight('')
-    setInsightAge(null)
+    setLoadingRecs(true)
     setError(null)
-
-    const hasPeers   = peer.top_peers && peer.top_peers.length > 0
-    const peerSummary = hasPeers
-      ? peer.top_peers!.map((abbr, i) =>
-          `${abbr} (${peer.top_peer_names![i]}, score ${peer.top_peer_scores![i]})`
-        ).join(', ')
-      : 'no directly comparable peers found in this group'
-
-    const weakObjectives = objectives
-      .slice(0, 3)
-      .map((o) => `• ${o.name} (${o.score}/100)`)
-      .join('\n')
-
-    const prompt = `You are a strategic advisor for international sports federations. 
-Analyse the following performance gap and produce 3–4 specific, actionable recommendations.
-
-FEDERATION: ${federationName} (${federationAbbr})
-GROUP: ${groupMeta?.label ?? ifGroup} 
-WORST PILLAR: ${peer.worst_pillar_name} – score ${peer.worst_pillar_score}/100
-WEAKEST OBJECTIVES WITHIN THIS PILLAR:
-${weakObjectives || '(objectives not available)'}
-
-TOP-PERFORMING PEERS ON THIS PILLAR (similar size, same group):
-${peerSummary}
-
-Write recommendations in this format:
-1. [Specific action title]
-[2–3 sentences explaining the action, referencing what peer federations do, and why it would improve ${federationAbbr}'s score on ${peer.worst_pillar_name}.]
-
-Be concrete and IF-specific. Mention peer federation names where relevant. Keep each recommendation under 80 words. Do not use generic management language. End with a one-sentence priority call-out.`
+    setLegacyInsight('')
+    setInsightAge(null)
 
     try {
-      const res = await fetch('/api/insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-      })
-      if (!res.ok) throw new Error(`API error: ${res.status}`)
-      const json = await res.json()
-      const text: string = json.text ?? json.error ?? 'No response.'
-
-      setInsight(text)
-
-      // Persist regenerated insight back to Supabase (upsert)
-      const now = new Date().toISOString()
-      setInsightAge(now)
-      await supabase.from('pillar_insights').upsert(
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-recommendations`,
         {
-          federation_id: federationId,
-          pillar_name:   peer.worst_pillar_name,
-          pillar_score:  peer.worst_pillar_score,
-          insight:       text,
-          model:         'claude-sonnet-4-20250514',
-          generated_at:  now,
-        },
-        { onConflict: 'federation_id' }
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          },
+          body: JSON.stringify({
+            federation_id: federationId,
+            pillar_slug: peer.worst_pillar_slug,
+            force_regenerate: true,
+          }),
+        }
       )
+      if (!res.ok) throw new Error(`Edge Function error: ${res.status}`)
+      const json = await res.json()
+      if (json.recommendations) {
+        setRecs(json.recommendations as Recommendation[])
+        setInsightAge(new Date().toISOString())
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
     }
 
-    setLoadingAI(false)
-  }, [peer, objectives, federationName, federationAbbr, ifGroup, groupMeta, federationId])
+    setLoadingRecs(false)
+  }, [peer, federationId])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -231,10 +267,11 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
   }
 
   const hasPeers = peer.top_peers && peer.top_peers.length > 0
+  const hasRecs  = recs.length > 0
 
   return (
     <>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}`}</style>
 
       <div style={{
         background: 'var(--surface)', border: '0.5px solid var(--border)',
@@ -251,13 +288,10 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
               Priority Improvement Area
             </div>
             <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-              Lowest-scoring pillar and peer-based recommendations
+              Lowest-scoring pillar · SMART recommendations · Peer benchmarks
             </div>
           </div>
-          <span style={{
-            flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '3px 8px',
-            borderRadius: 99, ...badge,
-          }}>
+          <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 99, ...badge }}>
             {groupMeta?.shortLabel ?? ifGroup}
           </span>
         </div>
@@ -273,8 +307,6 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
               <span style={{ fontSize: 11, fontWeight: 500, color: '#f87171' }}>/100</span>
             </span>
           </div>
-
-          {/* Score bar */}
           <div style={{ height: 6, background: '#fee2e2', borderRadius: 99, overflow: 'hidden' }}>
             <div style={{ width: `${peer.worst_pillar_score}%`, height: '100%', background: '#f87171', borderRadius: 99 }} />
           </div>
@@ -285,7 +317,7 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
               <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                 Lowest objectives
               </div>
-              {objectives.slice(0, 3).map((o) => (
+              {objectives.slice(0, 3).map(o => (
                 <div key={o.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontFamily: 'sans-serif', fontSize: 12, color: '#b91c1c', marginBottom: 4 }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{o.name}</span>
                   <span style={{ fontWeight: 700, marginLeft: 8, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{o.score}</span>
@@ -321,76 +353,121 @@ Be concrete and IF-specific. Mention peer federation names where relevant. Keep 
           )}
         </div>
 
-        {/* ── AI insight section ── */}
+        {/* ── SMART Recommendations ── */}
         <div style={{ padding: '1rem 1.25rem' }}>
-          {insight ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    AI Recommendations
-                  </div>
-                  {insightAge && (
-                    <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)' }}>
-                      · generated {relativeDate(insightAge)}
-                    </span>
-                  )}
+              <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Strategic Recommendations
+              </div>
+              {insightAge && (
+                <div style={{ fontFamily: 'sans-serif', fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+                  generated {relativeDate(insightAge)}
                 </div>
-                <button
-                  onClick={generateInsight}
-                  disabled={loadingAI}
-                  style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}
-                >
-                  {loadingAI ? 'Regenerating…' : 'Regenerate ↺'}
-                </button>
-              </div>
-              <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                {insight}
-              </div>
+              )}
             </div>
-          ) : (
-            <div>
-              <div style={{ fontFamily: 'sans-serif', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                AI Recommendations
-              </div>
-              <button
-                onClick={generateInsight}
-                disabled={loadingAI}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 14px', borderRadius: 8, border: '0.5px solid var(--border)',
-                  background: 'var(--surface2)', color: 'var(--text)',
-                  fontFamily: 'sans-serif', fontSize: 12, fontWeight: 500,
-                  cursor: loadingAI ? 'not-allowed' : 'pointer',
-                  opacity: loadingAI ? 0.6 : 1, transition: 'opacity 0.15s',
-                }}
-              >
-                {loadingAI ? (
-                  <>
-                    <svg style={{ animation: 'spin 1s linear infinite', width: 13, height: 13 }} fill="none" viewBox="0 0 24 24">
-                      <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Generating…
-                  </>
-                ) : (
-                  <>
-                    <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
-                    </svg>
-                    No cached insight — generate now
-                  </>
-                )}
-              </button>
+            <button
+              onClick={generateRecs}
+              disabled={loadingRecs}
+              style={{
+                fontFamily: 'sans-serif', fontSize: 11, color: '#2563eb',
+                background: 'none', border: 'none', cursor: loadingRecs ? 'wait' : 'pointer',
+                fontWeight: 500, padding: 0, opacity: loadingRecs ? 0.6 : 1,
+              }}
+            >
+              {loadingRecs ? 'Generating…' : hasRecs ? 'Regenerate ↺' : 'Generate →'}
+            </button>
+          </div>
+
+          {/* Skeleton while generating */}
+          {loadingRecs && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[1, 2, 3].map(i => (
+                <div key={i} style={{ background: 'var(--surface2)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 16, animation: 'pulse 1.5s infinite' }}>
+                  <div style={{ height: 12, background: 'var(--border)', borderRadius: 4, width: '60%', marginBottom: 8 }} />
+                  <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, width: '90%', marginBottom: 4 }} />
+                  <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, width: '75%' }} />
+                </div>
+              ))}
             </div>
           )}
+
+          {/* Structured SMART recs */}
+          {hasRecs && !loadingRecs && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {recs.map((rec, i) => {
+                const imp = IMPACT[rec.impact_type] ?? IMPACT.governance
+                const mag = MAGNITUDE[rec.impact_magnitude] ?? MAGNITUDE.medium
+                return (
+                  <div key={rec.id ?? i} style={{
+                    background: `${imp.color}08`, border: `1px solid ${imp.color}25`,
+                    borderRadius: 10, padding: 16, borderLeft: `3px solid ${mag.dot}`,
+                  }}>
+                    <div style={{ fontFamily: 'sans-serif', fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, marginBottom: 10 }}>
+                      <span style={{ color: imp.color, fontFamily: 'monospace', fontSize: 11, marginRight: 6 }}>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      {rec.action}
+                    </div>
+                    <ImpactBadge type={rec.impact_type} magnitude={rec.impact_magnitude} />
+                    {rec.rationale && (
+                      <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text2)', marginTop: 10, lineHeight: 1.6 }}>
+                        {rec.rationale}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                      {rec.kpi && (
+                        <div style={{
+                          background: 'var(--surface2)', border: '0.5px solid var(--border)',
+                          borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--text3)', flex: 1,
+                        }}>
+                          <span style={{ display: 'block', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, color: 'var(--text3)' }}>KPI</span>
+                          {rec.kpi}
+                        </div>
+                      )}
+                      {rec.deadline && (
+                        <div style={{
+                          background: 'var(--surface2)', border: `1px solid ${mag.dot}40`,
+                          borderRadius: 6, padding: '6px 10px', fontSize: 10, color: mag.color,
+                          display: 'flex', flexDirection: 'column', minWidth: 80,
+                        }}>
+                          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, opacity: 0.6 }}>Deadline</span>
+                          {rec.deadline}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Legacy plain-text insight fallback (while no SMART recs exist yet) */}
+          {!hasRecs && !loadingRecs && legacyInsight && (
+            <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {legacyInsight}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!hasRecs && !loadingRecs && !legacyInsight && (
+            <div style={{ border: '1px dashed var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: 20, marginBottom: 8 }}>🎯</div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 13, color: 'var(--text3)' }}>
+                No recommendations yet for this pillar.
+              </div>
+              <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
+                Click "Generate →" to create AI-powered SMART recommendations with KPI, deadline, and impact classification.
+              </div>
+            </div>
+          )}
+
           {error && (
             <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#dc2626', marginTop: 8 }}>
               {error}
             </div>
           )}
         </div>
-
       </div>
     </>
   )
