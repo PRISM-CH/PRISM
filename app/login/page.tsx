@@ -3,11 +3,10 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const from = searchParams.get('from') || '/'
 
   const [password, setPassword] = useState('')
@@ -27,7 +26,9 @@ function LoginForm() {
     })
 
     if (res.ok) {
-      router.replace(from)
+      // Hard navigation — forces a fresh server request so middleware
+      // evaluates the newly-set cookie before rendering the destination.
+      window.location.href = from
     } else {
       setError('Incorrect password.')
       setLoading(false)
