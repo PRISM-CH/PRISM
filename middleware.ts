@@ -1,57 +1,76 @@
 // middleware.ts
-// Protects all federation scorecards except FEI, and all non-whitelisted routes.
-// Password stored in PRISM_PASSWORD env var (set in Vercel dashboard).
+// Protects all routes except /directory and system paths.
+// Two passwords are supported:
+//   PRISM_PASSWORD     → cookie "authenticated"     (master — access to all routes)
+//   PRISM_UCI_PASSWORD → cookie "uci_authenticated" (UCI scorecard only)
+//
+// Public routes: /directory only. Everything else (incl. FEI) requires auth.
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const COOKIE_NAME = 'prism_auth'
-const PUBLIC_COOKIE_VALUE = 'authenticated'
 
-// ── Public routes (no auth required) ─────────────────────────────────────────
+// ── Route classifiers ─────────────────────────────────────────────────────────
 
+/** Returns true for routes that never need a password. */
 function isPublic(request: NextRequest): boolean {
-  const { pathname, searchParams } = request.nextUrl
+  const { pathname } = request.nextUrl
 
-  // Always public: static assets, Next.js internals, login page
+  // Always public: static assets, Next.js internals, login page, auth endpoint
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    pathname.startsWith('/api/insights') ||   // keep AI endpoint accessible
+    pathname.startsWith('/api/insights') ||
     pathname.startsWith('/api/auth') ||
     pathname === '/login'
   ) return true
 
-  // Public: directory page
+  // Directory is the only public page
   if (pathname === '/directory') return true
 
-  // Public: root page ONLY when fed=FEI (or no fed param — defaults to FEI)
-  if (pathname === '/') {
-    const fed = searchParams.get('fed')
-    if (!fed || fed === 'FEI') return true
-    return false   // any other ?fed=XXX requires auth
-  }
-
-  // Everything else is private
   return false
+}
+
+/** Returns true for the UCI scorecard route (?fed=UCI on root). */
+function isUciRoute(request: NextRequest): boolean {
+  const { pathname, searchParams } = request.nextUrl
+  return pathname === '/' && searchParams.get('fed') === 'UCI'
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 export function middleware(request: NextRequest) {
+  // Public routes — pass through immediately
   if (isPublic(request)) return NextResponse.next()
 
-  // Check auth cookie
-  const cookie = request.cookies.get(COOKIE_NAME)
-  if (cookie?.value === PUBLIC_COOKIE_VALUE) return NextResponse.next()
+  const cookieValue = request.cookies.get(COOKIE_NAME)?.value
 
-  // Not authenticated — redirect to login, preserve intended destination
+  // UCI scorecard: UCI password or master password
+  if (isUciRoute(request)) {
+    if (cookieValue === 'uci_authenticated' || cookieValue === 'authenticated') {
+      return NextResponse.next()
+    }
+    return redirectToLogin(request)
+  }
+
+  // All other protected routes: master password only
+  if (cookieValue === 'authenticated') {
+    return NextResponse.next()
+  }
+
+  return redirectToLogin(request)
+}
+
+function redirectToLogin(request: NextRequest) {
   const loginUrl = new URL('/login', request.url)
-  loginUrl.searchParams.set('from', request.nextUrl.pathname + request.nextUrl.search)
+  loginUrl.searchParams.set(
+    'from',
+    request.nextUrl.pathname + request.nextUrl.search
+  )
   return NextResponse.redirect(loginUrl)
 }
 
 export const config = {
-  // Run on all routes except static files Next.js handles itself
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
