@@ -1,9 +1,5 @@
 'use client'
 // scorecardclient.tsx  –  PRISM  v2
-// Adapted to use:
-//   • federation_rankings view  (group_rank, global_rank, pillar_ranks JSONB)
-//   • recommendations table     (SMART records per pillar)
-//   • DATA_SOURCES lookup        (per-pillar, client-side)
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
@@ -11,7 +7,6 @@ import { supabase } from '@/lib/supabase'
 import type { Federation, Pillar, Objective, Assessment, ScorecardData } from '@/lib/types'
 
 import ScorecardRadar from './ScorecardRadar'
-import PillarInsights from './PillarInsights'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -30,7 +25,6 @@ const FEDERATIONS = [
 type FederationAbbr = typeof FEDERATIONS[number]
 const DEFAULT_FED_IDX = 0
 
-// Pillar metadata — slugs must match DB values
 const PILLARS = [
   { slug: 'reach',          label: 'Reach & Engagement',       icon: '📡', color: '#00C9A7' },
   { slug: 'participation',  label: 'Participation & Growth',    icon: '🌍', color: '#60A5FA' },
@@ -49,20 +43,22 @@ const DATA_SOURCES: Record<string, string[]> = {
   governance:     ['IOC Recognition Status Register', 'IF Ethics Commission Reports', 'CAS Jurisprudence (public)', 'IF Statutes (published)'],
 }
 
-// impact_type → display metadata
-const IMPACT: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  olympic_position: { label: 'Olympic Position', color: '#00C9A7', bg: '#00C9A71A', icon: '🏅' },
-  exclusion_risk:   { label: 'Exclusion Risk',   color: '#EF4444', bg: '#EF44441A', icon: '⚠️' },
-  ioc_funding:      { label: 'IOC Funding',       color: '#F59E0B', bg: '#F59E0B1A', icon: '💰' },
-  sponsorship:      { label: 'Sponsorship',       color: '#A78BFA', bg: '#A78BFA1A', icon: '📈' },
-  governance:       { label: 'Governance',        color: '#60A5FA', bg: '#60A5FA1A', icon: '🏛️' },
+// ─── Impact metadata ──────────────────────────────────────────────────────────
+// impact_type describes *what* is at stake; impact_magnitude describes *how severely*
+
+const IMPACT_TYPE: Record<string, { label: string; color: string; bg: string; icon: string; description: string }> = {
+  olympic_position: { label: 'Olympic Position', color: '#00C9A7', bg: '#00C9A71A', icon: '🏅', description: 'Affects standing in the Olympic programme' },
+  exclusion_risk:   { label: 'Exclusion Risk',   color: '#EF4444', bg: '#EF44441A', icon: '⚠️', description: 'Risk of programme exclusion or suspension' },
+  ioc_funding:      { label: 'IOC Funding',       color: '#F59E0B', bg: '#F59E0B1A', icon: '💰', description: 'Affects IOC solidarity or financial support' },
+  sponsorship:      { label: 'Sponsorship',       color: '#A78BFA', bg: '#A78BFA1A', icon: '📈', description: 'Affects commercial revenue potential' },
+  governance:       { label: 'Governance',        color: '#60A5FA', bg: '#60A5FA1A', icon: '🏛️', description: 'Affects governance standing or compliance' },
 }
 
-const MAGNITUDE: Record<string, { label: string; color: string; dot: string }> = {
-  critical: { label: 'Critical', color: '#EF4444', dot: '#EF4444' },
-  high:     { label: 'High',     color: '#F59E0B', dot: '#F59E0B' },
-  medium:   { label: 'Medium',   color: '#60A5FA', dot: '#60A5FA' },
-  low:      { label: 'Low',      color: '#6B7FA3', dot: '#6B7FA3' },
+const IMPACT_MAGNITUDE: Record<string, { label: string; color: string; dot: string; description: string }> = {
+  critical: { label: 'Critical impact', color: '#EF4444', dot: '#EF4444', description: 'Immediate action required' },
+  high:     { label: 'High impact',     color: '#F59E0B', dot: '#F59E0B', description: 'Address within current cycle' },
+  medium:   { label: 'Medium impact',   color: '#60A5FA', dot: '#60A5FA', description: 'Plan for next cycle' },
+  low:      { label: 'Low impact',      color: '#6B7FA3', dot: '#6B7FA3', description: 'Monitor and review' },
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,27 +159,32 @@ function GradeBadge({ grade }: { grade: string }) {
   )
 }
 
-function ImpactBadge({ type, magnitude }: { type: string; magnitude: string }) {
-  const imp = IMPACT[type] ?? IMPACT.governance
-  const mag = MAGNITUDE[magnitude] ?? MAGNITUDE.medium
+// Impact area badge — what is at stake
+function ImpactAreaBadge({ type }: { type: string }) {
+  const imp = IMPACT_TYPE[type] ?? IMPACT_TYPE.governance
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        background: imp.bg, color: imp.color, border: `1px solid ${imp.color}40`,
-        borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
-        display: 'flex', alignItems: 'center', gap: 4,
-      }}>
-        {imp.icon} {imp.label}
-      </span>
-      <span style={{
-        background: `${mag.dot}15`, color: mag.color,
-        borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 600,
-        display: 'flex', alignItems: 'center', gap: 3,
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: mag.dot, display: 'inline-block' }} />
-        {mag.label}
-      </span>
-    </div>
+    <span style={{
+      background: imp.bg, color: imp.color, border: `1px solid ${imp.color}40`,
+      borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
+      {imp.icon} {imp.label}
+    </span>
+  )
+}
+
+// Impact magnitude badge — how severely
+function ImpactMagnitudeBadge({ magnitude }: { magnitude: string }) {
+  const mag = IMPACT_MAGNITUDE[magnitude] ?? IMPACT_MAGNITUDE.medium
+  return (
+    <span style={{
+      background: `${mag.dot}15`, color: mag.color,
+      borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: mag.dot, display: 'inline-block', flexShrink: 0 }} />
+      {mag.label}
+    </span>
   )
 }
 
@@ -267,6 +268,54 @@ function CarouselArrow({ dir, onClick }: { dir: 'left' | 'right'; onClick: () =>
         }
       </svg>
     </button>
+  )
+}
+
+// ─── Impact legend strip ───────────────────────────────────────────────────────
+// Shown once above the recommendations panel so users understand the two axes
+
+function ImpactLegend() {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start',
+      padding: '10px 14px', background: 'var(--surface2)',
+      borderRadius: 8, marginBottom: 14,
+      fontSize: 10, color: 'var(--text3)', lineHeight: 1.5,
+    }}>
+      <div>
+        <div style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5 }}>
+          Impact area — what is at stake
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {Object.entries(IMPACT_TYPE).map(([key, val]) => (
+            <span key={key} style={{
+              background: val.bg, color: val.color, border: `1px solid ${val.color}40`,
+              borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}>
+              {val.icon} {val.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5 }}>
+          Impact severity — how urgently to act
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {Object.entries(IMPACT_MAGNITUDE).map(([key, val]) => (
+            <span key={key} style={{
+              background: `${val.dot}15`, color: val.color,
+              borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: val.dot, display: 'inline-block' }} />
+              {val.description}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -521,7 +570,7 @@ export default function ScorecardClient() {
         })}
       </div>
 
-      {/* ── Active pillar detail + Recommendations side-by-side ── */}
+      {/* ── Active pillar detail + Impact-ranked recommendations side-by-side ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 16, marginBottom: '1.5rem' }}>
 
         {/* Objectives panel */}
@@ -589,58 +638,80 @@ export default function ScorecardClient() {
           </div>
         )}
 
-        {/* ── Per-pillar Recommendations panel ── */}
+        {/* ── Impact-ranked recommendations panel ── */}
         {activePillarMeta && (
           <div style={{ background: 'var(--surface)', border: `0.5px solid ${activePillarMeta.color}40`, borderRadius: 12, padding: 20 }}>
+
             {/* Panel header */}
-            <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: `0.5px solid ${activePillarMeta.color}25` }}>
+            <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `0.5px solid ${activePillarMeta.color}25` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 15 }}>{activePillarMeta.icon}</span>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                  {activePillarMeta.label} — Recommendations
+                  {activePillarMeta.label} — Impact-ranked actions
                 </div>
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: activePillarMeta.color, display: 'inline-block', flexShrink: 0 }} />
-                SMART actions for this pillar only · select a different pillar above to switch
+              <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
+                Each action is assessed by <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>what it impacts</strong> (Olympic position, funding, governance…) and <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>how severely</strong> (critical → low). Sorted by severity.
               </div>
             </div>
+
+            {/* Impact legend — shown once per panel */}
+            <ImpactLegend />
 
             {recs.length === 0 && (
               <div style={{ border: '1px dashed var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
                 <div style={{ fontSize: 20, marginBottom: 8 }}>🎯</div>
-                <div style={{ fontSize: 13, color: 'var(--text3)' }}>No recommendations yet for this pillar.</div>
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>No impact-ranked actions yet for this pillar.</div>
               </div>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {recs.map((rec, i) => {
-                const imp = IMPACT[rec.impact_type] ?? IMPACT.governance
-                const mag = MAGNITUDE[rec.impact_magnitude] ?? MAGNITUDE.medium
+                const imp = IMPACT_TYPE[rec.impact_type] ?? IMPACT_TYPE.governance
+                const mag = IMPACT_MAGNITUDE[rec.impact_magnitude] ?? IMPACT_MAGNITUDE.medium
                 return (
                   <div key={rec.id ?? i} style={{
-                    background: `${imp.color}08`, border: `1px solid ${imp.color}25`,
-                    borderRadius: 10, padding: 16, borderLeft: `3px solid ${mag.dot}`,
+                    background: `${imp.color}08`,
+                    border: `1px solid ${imp.color}25`,
+                    borderRadius: 10,
+                    padding: 16,
+                    // Left border color encodes severity so it's immediately scannable
+                    borderLeft: `3px solid ${mag.dot}`,
                   }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, marginBottom: 10 }}>
+                    {/* Impact badges first — what's at stake and how urgently */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <ImpactAreaBadge type={rec.impact_type} />
+                      <ImpactMagnitudeBadge magnitude={rec.impact_magnitude} />
+                    </div>
+
+                    {/* Action headline */}
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, marginBottom: 8 }}>
                       <span style={{ color: imp.color, fontFamily: 'monospace', fontSize: 11, marginRight: 6 }}>
                         {String(i + 1).padStart(2, '0')}
                       </span>
                       {rec.action}
                     </div>
-                    <ImpactBadge type={rec.impact_type} magnitude={rec.impact_magnitude} />
+
+                    {/* Rationale — why this action has the stated impact */}
                     {rec.rationale && (
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 10 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', display: 'block', marginBottom: 3 }}>
+                          Why this matters
+                        </span>
                         {rec.rationale}
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+
+                    {/* KPI + deadline */}
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                       {rec.kpi && (
                         <div style={{
                           background: 'var(--surface2)', border: '0.5px solid var(--border)',
                           borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--text3)', flex: 1,
                         }}>
-                          <span style={{ display: 'block', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, color: 'var(--text3)' }}>KPI</span>
+                          <span style={{ display: 'block', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, color: 'var(--text3)' }}>
+                            How impact is measured (KPI)
+                          </span>
                           {rec.kpi}
                         </div>
                       )}
@@ -650,7 +721,9 @@ export default function ScorecardClient() {
                           borderRadius: 6, padding: '6px 10px', fontSize: 10,
                           color: mag.color, display: 'flex', flexDirection: 'column', minWidth: 80,
                         }}>
-                          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, opacity: 0.6 }}>Deadline</span>
+                          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, opacity: 0.6 }}>
+                            Deadline
+                          </span>
                           {rec.deadline}
                         </div>
                       )}
@@ -678,16 +751,6 @@ export default function ScorecardClient() {
             ifGroup={federation.if_group}
           />
         </div>
-      )}
-
-      {/* ── Priority Improvement Area (weakest pillar deep-dive) ── */}
-      {federation.if_group && (
-        <PillarInsights
-          federationId={federation.id}
-          federationName={federation.name}
-          federationAbbr={federation.abbreviation}
-          ifGroup={federation.if_group}
-        />
       )}
 
       {/* ── Footer ── */}
