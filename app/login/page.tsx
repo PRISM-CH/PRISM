@@ -103,9 +103,7 @@ function LoginForm() {
 
         <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '0.5px solid var(--border, #e5e7eb)' }}>
           <p style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text3, #9ca3af)', lineHeight: 1.6 }}>
-            Public preview:{' '}
-            <a href="/?fed=FEI" style={{ color: '#2563eb', textDecoration: 'none' }}>FEI scorecard</a>
-            {' '}·{' '}
+            Public:{' '}
             <a href="/directory" style={{ color: '#2563eb', textDecoration: 'none' }}>IF Directory</a>
           </p>
         </div>
