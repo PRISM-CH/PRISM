@@ -325,7 +325,17 @@ export default function ScorecardClient() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const [fedIdx, setFedIdx] = useState(DEFAULT_FED_IDX)
+  // ── Fix 1: lazy-initialise from URL so the correct federation loads on the
+  //    very first render — no useState(DEFAULT_FED_IDX) that always starts at BWF.
+  const [fedIdx, setFedIdx] = useState<number>(() => {
+    const fedParam = searchParams.get('fed')
+    if (fedParam) {
+      const idx = FEDERATIONS.indexOf(fedParam as FederationAbbr)
+      if (idx !== -1) return idx
+    }
+    return DEFAULT_FED_IDX
+  })
+
   const [data, setData] = useState<ScorecardData | null>(null)
   const [ranking, setRanking] = useState<FederationRanking | null>(null)
   const [loading, setLoading] = useState(true)
@@ -334,7 +344,7 @@ export default function ScorecardClient() {
   const [activePillarSlug, setActivePillarSlug] = useState<string>(PILLARS[0].slug)
   const [recs, setRecs] = useState<Recommendation[]>([])
 
-  // Sync URL param → state
+  // Sync URL param → state (handles browser back/forward navigation)
   useEffect(() => {
     const fedParam = searchParams.get('fed')
     if (!fedParam) return
@@ -345,6 +355,11 @@ export default function ScorecardClient() {
   // Re-fetch whenever selected federation changes
   useEffect(() => {
     const abbr: FederationAbbr = FEDERATIONS[fedIdx]
+
+    // ── Fix 2: AbortController so a stale fetch (e.g. the initial BWF request
+    //    if the URL pointed to UCI) cannot overwrite the data we actually want.
+    const controller = new AbortController()
+    let cancelled = false
 
     async function load() {
       setLoading(true)
@@ -358,6 +373,7 @@ export default function ScorecardClient() {
       try {
         const { data: fedRows, error: fedErr } = await supabase
           .from('federations').select('*').eq('abbreviation', abbr).limit(1)
+        if (cancelled) return
         if (fedErr) throw new Error(fedErr.message)
         const federation = fedRows?.[0] as Federation | undefined
         if (!federation) throw new Error(`No data found for ${abbr}`)
@@ -371,6 +387,7 @@ export default function ScorecardClient() {
           ).eq('federation_id', federation.id).limit(1),
         ])
 
+        if (cancelled) return
         if (pillarsRaw.error) throw new Error(pillarsRaw.error.message)
         if (assessmentRows.error) throw new Error(assessmentRows.error.message)
 
@@ -382,19 +399,26 @@ export default function ScorecardClient() {
           })
         )
 
+        if (cancelled) return
         const assessment = assessmentRows.data?.[0] as Assessment | undefined
         if (!assessment) throw new Error(`No assessment found for ${abbr}`)
 
         setData({ federation, pillars: pillarsWithObj, assessment })
         if (rankingRows.data?.[0]) setRanking(rankingRows.data[0] as FederationRanking)
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Unknown error')
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Unknown error')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     load()
+
+    // Cleanup: mark any in-flight requests for this federation as stale
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [fedIdx])
 
   // Load recommendations whenever pillar tab changes
