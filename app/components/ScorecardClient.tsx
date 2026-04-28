@@ -4,7 +4,6 @@
 //   • federation_rankings view  (group_rank, global_rank, pillar_ranks JSONB)
 //   • recommendations table     (SMART records per pillar)
 //   • DATA_SOURCES lookup        (per-pillar, client-side)
-//   • generate-recommendations  Edge Function
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
@@ -285,7 +284,6 @@ export default function ScorecardClient() {
   const [activeIdx, setActiveIdx] = useState(0)
   const [activePillarSlug, setActivePillarSlug] = useState<string>(PILLARS[0].slug)
   const [recs, setRecs] = useState<Recommendation[]>([])
-  const [recsLoading, setRecsLoading] = useState(false)
 
   // Sync URL param → state
   useEffect(() => {
@@ -374,34 +372,6 @@ export default function ScorecardClient() {
     router.replace(`/?fed=${abbr}`, { scroll: false })
   }
 
-  // Generate / regenerate SMART recommendations via Edge Function
-  const generateRecs = useCallback(async () => {
-    if (!data?.federation?.id || !activePillarSlug) return
-    setRecsLoading(true)
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-recommendations`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          },
-          body: JSON.stringify({
-            federation_id: data.federation.id,
-            pillar_slug: activePillarSlug,
-            force_regenerate: true,
-          }),
-        }
-      )
-      const json = await res.json()
-      if (json.recommendations) setRecs(json.recommendations as Recommendation[])
-    } catch (e) {
-      console.error('generate-recommendations error', e)
-    }
-    setRecsLoading(false)
-  }, [data?.federation?.id, activePillarSlug])
-
   const carousel = <FederationCarousel index={fedIdx} onNavigate={navigateFederation} />
 
   // ── Loading / error states ────────────────────────────────────────────────
@@ -423,7 +393,6 @@ export default function ScorecardClient() {
   )
 
   const { federation, pillars, assessment } = data
-  const activePillar = pillars[activeIdx]
   const activePillarMeta = PILLARS.find(p => p.slug === activePillarSlug)
   const activePillarData = pillars.find(p => p.slug === activePillarSlug)
   const activePillarRank = ranking?.pillar_ranks?.find(pr => pr.pillar_slug === activePillarSlug)
@@ -597,7 +566,6 @@ export default function ScorecardClient() {
                   {obj.trend_note && (
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{obj.trend_note}</div>
                   )}
-                  {/* evidence tags (from existing field) */}
                   {(obj.evidence ?? []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
                       {(obj.evidence as string[]).map((e: string) => (
@@ -631,40 +599,15 @@ export default function ScorecardClient() {
 
         {/* Recommendations panel */}
         <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Strategic Recommendations</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)' }}>Specific · Measurable · Time-bound</div>
-            </div>
-            <button onClick={generateRecs} disabled={recsLoading} style={{
-              background: recsLoading ? 'var(--surface2)' : 'rgba(0,201,167,0.12)',
-              border: '1px solid rgba(0,201,167,0.4)', borderRadius: 8,
-              color: '#00C9A7', cursor: recsLoading ? 'wait' : 'pointer',
-              padding: '6px 14px', fontSize: 11, fontWeight: 600,
-            }}>
-              {recsLoading ? 'Generating…' : recs.length > 0 ? '↻ Regenerate' : 'Generate →'}
-            </button>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Strategic Recommendations</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>Specific · Measurable · Time-bound</div>
           </div>
 
-          {recs.length === 0 && !recsLoading && (
+          {recs.length === 0 && (
             <div style={{ border: '1px dashed var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
               <div style={{ fontSize: 20, marginBottom: 8 }}>🎯</div>
               <div style={{ fontSize: 13, color: 'var(--text3)' }}>No recommendations yet for this pillar.</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, opacity: 0.7 }}>
-                Click "Generate →" for AI-powered SMART recommendations with impact classification.
-              </div>
-            </div>
-          )}
-
-          {recsLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[1, 2, 3].map(i => (
-                <div key={i} style={{ background: 'var(--surface2)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 16, animation: 'pulse 1.5s infinite' }}>
-                  <div style={{ height: 12, background: 'var(--border)', borderRadius: 4, width: '60%', marginBottom: 8 }} />
-                  <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, width: '90%', marginBottom: 4 }} />
-                  <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, width: '75%' }} />
-                </div>
-              ))}
             </div>
           )}
 
