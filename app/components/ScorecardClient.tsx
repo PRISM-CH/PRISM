@@ -651,7 +651,7 @@ export default function ScorecardClient() {
                 </div>
               </div>
               <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
-                Each action is assessed by <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>what it impacts</strong> (Olympic position, funding, governance…) and <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>how severely</strong> (critical → low). Sorted by severity.
+                Each action is assessed by <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>what it impacts</strong> (Olympic position, funding, governance…) and <strong style={{ color: 'var(--text2)', fontWeight: 600 }}>how severely</strong> (critical → low).
               </div>
             </div>
 
