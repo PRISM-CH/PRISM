@@ -65,7 +65,7 @@ const MAGNITUDE: Record<string, { label: string; color: string; dot: string }> =
   low:      { label: 'Low',      color: '#6B7FA3', dot: '#6B7FA3' },
 }
 
-// ─── Types for new DB objects ─────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PillarRank {
   pillar_slug: string
@@ -307,14 +307,12 @@ export default function ScorecardClient() {
       setActivePillarSlug(PILLARS[0].slug)
 
       try {
-        // Fetch federation row
         const { data: fedRows, error: fedErr } = await supabase
           .from('federations').select('*').eq('abbreviation', abbr).limit(1)
         if (fedErr) throw new Error(fedErr.message)
         const federation = fedRows?.[0] as Federation | undefined
         if (!federation) throw new Error(`No data found for ${abbr}`)
 
-        // Fetch all in parallel: pillars+objectives, assessment, rankings
         const [pillarsRaw, assessmentRows, rankingRows] = await Promise.all([
           supabase.from('pillars').select('*').eq('federation_id', federation.id).order('display_order'),
           supabase.from('assessments').select('*').eq('federation_id', federation.id)
@@ -327,7 +325,6 @@ export default function ScorecardClient() {
         if (pillarsRaw.error) throw new Error(pillarsRaw.error.message)
         if (assessmentRows.error) throw new Error(assessmentRows.error.message)
 
-        // Enrich pillars with objectives
         const pillarsWithObj: Pillar[] = await Promise.all(
           (pillarsRaw.data || []).map(async (p) => {
             const { data: objectives } = await supabase
@@ -374,8 +371,6 @@ export default function ScorecardClient() {
 
   const carousel = <FederationCarousel index={fedIdx} onNavigate={navigateFederation} />
 
-  // ── Loading / error states ────────────────────────────────────────────────
-
   if (loading) return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem' }}>
       <div style={{ marginBottom: '1.25rem' }}>{carousel}</div>
@@ -398,9 +393,7 @@ export default function ScorecardClient() {
   const activePillarRank = ranking?.pillar_ranks?.find(pr => pr.pillar_slug === activePillarSlug)
   const overallScore = Math.round(assessment.overall_score)
   const abbr = federation.abbreviation
-  const groupColor = '#00C9A7' // fallback; ideally map from if_group
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const groupColor = '#00C9A7'
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.25rem 4rem', fontFamily: 'sans-serif' }}>
@@ -423,7 +416,6 @@ export default function ScorecardClient() {
             </p>
           </div>
 
-          {/* Score + rank badges */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 48, fontWeight: 300, lineHeight: 1, color: scoreColor(overallScore) }}>
@@ -471,7 +463,7 @@ export default function ScorecardClient() {
         ))}
       </div>
 
-      {/* ── Pillar grid (click to switch active pillar) ── */}
+      {/* ── Pillar grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: '1.5rem' }}>
         {PILLARS.map((pMeta, i) => {
           const pData = pillars.find(p => p.slug === pMeta.slug)
@@ -597,67 +589,78 @@ export default function ScorecardClient() {
           </div>
         )}
 
-        {/* Recommendations panel */}
-        <div style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', borderRadius: 12, padding: 20 }}>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Strategic Recommendations</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)' }}>Specific · Measurable · Time-bound</div>
-          </div>
-
-          {recs.length === 0 && (
-            <div style={{ border: '1px dashed var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
-              <div style={{ fontSize: 20, marginBottom: 8 }}>🎯</div>
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>No recommendations yet for this pillar.</div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {recs.map((rec, i) => {
-              const imp = IMPACT[rec.impact_type] ?? IMPACT.governance
-              const mag = MAGNITUDE[rec.impact_magnitude] ?? MAGNITUDE.medium
-              return (
-                <div key={rec.id ?? i} style={{
-                  background: `${imp.color}08`, border: `1px solid ${imp.color}25`,
-                  borderRadius: 10, padding: 16, borderLeft: `3px solid ${mag.dot}`,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, marginBottom: 10 }}>
-                    <span style={{ color: imp.color, fontFamily: 'monospace', fontSize: 11, marginRight: 6 }}>
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    {rec.action}
-                  </div>
-                  <ImpactBadge type={rec.impact_type} magnitude={rec.impact_magnitude} />
-                  {rec.rationale && (
-                    <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
-                      {rec.rationale}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-                    {rec.kpi && (
-                      <div style={{
-                        background: 'var(--surface2)', border: '0.5px solid var(--border)',
-                        borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--text3)', flex: 1,
-                      }}>
-                        <span style={{ display: 'block', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, color: 'var(--text3)' }}>KPI</span>
-                        {rec.kpi}
-                      </div>
-                    )}
-                    {rec.deadline && (
-                      <div style={{
-                        background: 'var(--surface2)', border: `1px solid ${mag.dot}40`,
-                        borderRadius: 6, padding: '6px 10px', fontSize: 10,
-                        color: mag.color, display: 'flex', flexDirection: 'column', minWidth: 80,
-                      }}>
-                        <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, opacity: 0.6 }}>Deadline</span>
-                        {rec.deadline}
-                      </div>
-                    )}
-                  </div>
+        {/* ── Per-pillar Recommendations panel ── */}
+        {activePillarMeta && (
+          <div style={{ background: 'var(--surface)', border: `0.5px solid ${activePillarMeta.color}40`, borderRadius: 12, padding: 20 }}>
+            {/* Panel header */}
+            <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: `0.5px solid ${activePillarMeta.color}25` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 15 }}>{activePillarMeta.icon}</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                  {activePillarMeta.label} — Recommendations
                 </div>
-              )
-            })}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: activePillarMeta.color, display: 'inline-block', flexShrink: 0 }} />
+                SMART actions for this pillar only · select a different pillar above to switch
+              </div>
+            </div>
+
+            {recs.length === 0 && (
+              <div style={{ border: '1px dashed var(--border)', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+                <div style={{ fontSize: 20, marginBottom: 8 }}>🎯</div>
+                <div style={{ fontSize: 13, color: 'var(--text3)' }}>No recommendations yet for this pillar.</div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {recs.map((rec, i) => {
+                const imp = IMPACT[rec.impact_type] ?? IMPACT.governance
+                const mag = MAGNITUDE[rec.impact_magnitude] ?? MAGNITUDE.medium
+                return (
+                  <div key={rec.id ?? i} style={{
+                    background: `${imp.color}08`, border: `1px solid ${imp.color}25`,
+                    borderRadius: 10, padding: 16, borderLeft: `3px solid ${mag.dot}`,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, marginBottom: 10 }}>
+                      <span style={{ color: imp.color, fontFamily: 'monospace', fontSize: 11, marginRight: 6 }}>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      {rec.action}
+                    </div>
+                    <ImpactBadge type={rec.impact_type} magnitude={rec.impact_magnitude} />
+                    {rec.rationale && (
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
+                        {rec.rationale}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                      {rec.kpi && (
+                        <div style={{
+                          background: 'var(--surface2)', border: '0.5px solid var(--border)',
+                          borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--text3)', flex: 1,
+                        }}>
+                          <span style={{ display: 'block', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, color: 'var(--text3)' }}>KPI</span>
+                          {rec.kpi}
+                        </div>
+                      )}
+                      {rec.deadline && (
+                        <div style={{
+                          background: 'var(--surface2)', border: `1px solid ${mag.dot}40`,
+                          borderRadius: 6, padding: '6px 10px', fontSize: 10,
+                          color: mag.color, display: 'flex', flexDirection: 'column', minWidth: 80,
+                        }}>
+                          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2, opacity: 0.6 }}>Deadline</span>
+                          {rec.deadline}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Radar chart ── */}
@@ -677,7 +680,7 @@ export default function ScorecardClient() {
         </div>
       )}
 
-      {/* ── Pillar Insights (legacy cached AI, shown only when no recs table data) ── */}
+      {/* ── Priority Improvement Area (weakest pillar deep-dive) ── */}
       {federation.if_group && (
         <PillarInsights
           federationId={federation.id}
