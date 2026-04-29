@@ -48,7 +48,7 @@ const DATA_SOURCES: Record<string, string[]> = {
 
 const IMPACT_TYPE: Record<string, { label: string; color: string; bg: string; icon: string; description: string }> = {
   olympic_position: { label: 'Olympic Position', color: '#00C9A7', bg: '#00C9A71A', icon: '🏅', description: 'Affects standing in the Olympic programme' },
-  exclusion_risk:   { label: 'Exclusion Risk',   color: '#EF4444', bg: '#EF44441A', icon: '⚠️', description: 'Risk of programme exclusion or suspension' },
+  programme_risk:   { label: 'Programme Risk', color: '#EF4444', bg: '#EF44441A', icon: '⚠️', description: 'Risk to Olympic programme' },
   ioc_funding:      { label: 'IOC Funding',       color: '#F59E0B', bg: '#F59E0B1A', icon: '💰', description: 'Affects IOC solidarity or financial support' },
   sponsorship:      { label: 'Sponsorship',       color: '#A78BFA', bg: '#A78BFA1A', icon: '📈', description: 'Affects commercial revenue potential' },
   governance:       { label: 'Governance',        color: '#60A5FA', bg: '#60A5FA1A', icon: '🏛️', description: 'Affects governance standing or compliance' },
