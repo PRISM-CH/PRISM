@@ -1,15 +1,16 @@
 // app/api/auth/route.ts
-// Validates submitted password against PRISM_PASSWORD (general) or
-// PRISM_UCI_PASSWORD (UCI-specific). Sets an httpOnly cookie accordingly.
+// Validates submitted password against PRISM_PASSWORD (general),
+// PRISM_UCI_PASSWORD (UCI-specific), or PRISM_WS_PASSWORD (WS-specific).
+// Sets an httpOnly cookie accordingly.
 //
 // Cookie values:
-//   "authenticated"     → general access (all scorecards except UCI)
-//   "uci_authenticated" → UCI access + all other scorecards
+//   "authenticated"     → master access (all scorecards)
+//   "uci_authenticated" → UCI scorecard only
+//   "ws_authenticated"  → World Sailing scorecard only
 
 import { NextResponse } from 'next/server'
 
 const COOKIE_NAME = 'prism_auth'
-// Cookie lasts 30 days; adjust as needed
 const MAX_AGE = 60 * 60 * 24 * 30
 
 export async function POST(req: Request) {
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
 
   const generalPassword = process.env.PRISM_PASSWORD
   const uciPassword     = process.env.PRISM_UCI_PASSWORD
+  const wsPassword      = process.env.PRISM_WS_PASSWORD
 
   if (!generalPassword) {
     return NextResponse.json(
@@ -30,10 +32,10 @@ export async function POST(req: Request) {
   let cookieValue: string | null = null
 
   if (uciPassword && trimmed === uciPassword.trim()) {
-    // UCI password grants access to the UCI scorecard only
     cookieValue = 'uci_authenticated'
+  } else if (wsPassword && trimmed === wsPassword.trim()) {
+    cookieValue = 'ws_authenticated'
   } else if (trimmed === generalPassword.trim()) {
-    // Master password grants access to all routes including UCI
     cookieValue = 'authenticated'
   }
 
@@ -41,7 +43,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Incorrect password' }, { status: 401 })
   }
 
-  // Set httpOnly cookie — not readable by JS, harder to steal
   const response = NextResponse.json({ ok: true })
   response.cookies.set(COOKIE_NAME, cookieValue, {
     httpOnly: true,
