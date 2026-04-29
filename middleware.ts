@@ -1,23 +1,19 @@
 // middleware.ts
 // Protects all routes except /directory and system paths.
-// Two passwords are supported:
-//   PRISM_PASSWORD     → cookie "authenticated"     (master — access to all routes)
+// Three passwords supported:
+//   PRISM_PASSWORD     → cookie "authenticated"     (master — all routes)
 //   PRISM_UCI_PASSWORD → cookie "uci_authenticated" (UCI scorecard only)
+//   PRISM_WS_PASSWORD  → cookie "ws_authenticated"  (World Sailing scorecard only)
 //
-// Public routes: /directory only. Everything else (incl. FEI) requires auth.
+// Public routes: /directory only.
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const COOKIE_NAME = 'prism_auth'
 
-// ── Route classifiers ─────────────────────────────────────────────────────────
-
-/** Returns true for routes that never need a password. */
 function isPublic(request: NextRequest): boolean {
   const { pathname } = request.nextUrl
-
-  // Always public: static assets, Next.js internals, login page, auth endpoint
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
@@ -25,40 +21,38 @@ function isPublic(request: NextRequest): boolean {
     pathname.startsWith('/api/auth') ||
     pathname === '/login'
   ) return true
-
-  // Directory is the only public page
   if (pathname === '/directory') return true
-
   return false
 }
 
-/** Returns true for the UCI scorecard route (?fed=UCI on root). */
-function isUciRoute(request: NextRequest): boolean {
+function getFedParam(request: NextRequest): string | null {
   const { pathname, searchParams } = request.nextUrl
-  return pathname === '/' && searchParams.get('fed') === 'UCI'
+  if (pathname !== '/') return null
+  return searchParams.get('fed')
 }
 
-// ── Middleware ────────────────────────────────────────────────────────────────
-
 export function middleware(request: NextRequest) {
-  // Public routes — pass through immediately
   if (isPublic(request)) return NextResponse.next()
 
   const cookieValue = request.cookies.get(COOKIE_NAME)?.value
+  const fed = getFedParam(request)
 
-  // UCI scorecard: UCI password or master password
-  if (isUciRoute(request)) {
-    if (cookieValue === 'uci_authenticated' || cookieValue === 'authenticated') {
-      return NextResponse.next()
-    }
+  // Master password always passes
+  if (cookieValue === 'authenticated') return NextResponse.next()
+
+  // UCI: UCI password or master
+  if (fed === 'UCI') {
+    if (cookieValue === 'uci_authenticated') return NextResponse.next()
     return redirectToLogin(request)
   }
 
-  // All other protected routes: master password only
-  if (cookieValue === 'authenticated') {
-    return NextResponse.next()
+  // WS: WS password or master
+  if (fed === 'WS') {
+    if (cookieValue === 'ws_authenticated') return NextResponse.next()
+    return redirectToLogin(request)
   }
 
+  // All other protected routes: master only
   return redirectToLogin(request)
 }
 
