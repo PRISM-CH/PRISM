@@ -64,7 +64,7 @@ interface Props {
 
 const IMPACT: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   olympic_position: { label: 'Olympic Position', color: '#00C9A7', bg: '#00C9A71A', icon: '🏅' },
-  exclusion_risk:   { label: 'Exclusion Risk',   color: '#EF4444', bg: '#EF44441A', icon: '⚠️' },
+  programme_risk: { label: 'Programme Risk', color: '#EF4444', bg: '#EF44441A', icon: '⚠️' },
   ioc_funding:      { label: 'IOC Funding',       color: '#F59E0B', bg: '#F59E0B1A', icon: '💰' },
   sponsorship:      { label: 'Sponsorship',       color: '#A78BFA', bg: '#A78BFA1A', icon: '📈' },
   governance:       { label: 'Governance',        color: '#60A5FA', bg: '#60A5FA1A', icon: '🏛️' },
