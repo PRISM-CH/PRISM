@@ -12,7 +12,7 @@ import ScorecardRadar from './ScorecardRadar'
 
 const FEDERATIONS = [
   'BWF', 'CIPS', 'CMAS', 'FAI', 'FEI', 'FIA', 'FIAS', 'FIB', 'FIBA', 'FIDE',
-  'FIE', 'FIFA', 'FIH', 'FIK', 'FIL', 'FIM', 'FIP', 'FIPV', 'FIS', 'FISA', 'FISav'
+  'FIE', 'FIFA', 'FIH', 'FIK', 'FIL', 'FIM', 'FIP', 'FIPV', 'FIS', 'FISA', 'FISav',
   'FISO', 'FISU', 'FITA', 'FITEQ', 'FIVB', 'FMJD', 'IAF', 'IBF', 'IBSF', 'IBU', 'ICC', 'ICF', 'ICSF',
   'ICU', 'IDBF', 'IFA', 'IFAF', 'IFBB', 'IFF', 'IFI', 'IFMA', 'IFS', 'IFSS', 'IFSC', 'IGO',
   'IGF', 'IHF', 'IIHF', 'IJF', 'IKF', 'ILSF', 'IOF', 'IPF', 'IPSC', 'IRF', 'ISA',
