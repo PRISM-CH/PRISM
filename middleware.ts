@@ -43,8 +43,8 @@ export function middleware(request: NextRequest) {
   // #UCI: UCI password or master
   // UCI: public demo: no password required
   if (fed === 'UCI') {
-    #if (cookieValue === 'uci_authenticated') return NextResponse.next()
-    #return redirectToLogin(request)
+    //if (cookieValue === 'uci_authenticated') return NextResponse.next()
+    //return redirectToLogin(request)
     return NextResponse.next()
   }
 
