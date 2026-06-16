@@ -47,7 +47,7 @@ export function middleware(request: NextRequest) {
   //}
   // UCI and FIFA: public demo: no password required
   const allowedFeds = ['UCI', 'FIFA']
-  if (allowedFeds.includes(fed)) {
+  if (fed && allowedFeds.includes(fed)) {
     return NextResponse.next()
   }
 
