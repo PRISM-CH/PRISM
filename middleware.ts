@@ -41,10 +41,13 @@ export function middleware(request: NextRequest) {
   if (cookieValue === 'authenticated') return NextResponse.next()
 
   // #UCI: UCI password or master
-  // UCI: public demo: no password required
-  if (fed === 'UCI') {
+  //if (fed === 'UCI') {
     //if (cookieValue === 'uci_authenticated') return NextResponse.next()
     //return redirectToLogin(request)
+  //}
+  // UCI and FIFA: public demo: no password required
+  const allowedFeds = ['UCI', 'FIFA']
+  if (allowedFeds.includes(fed)) {
     return NextResponse.next()
   }
 
