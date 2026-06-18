@@ -46,7 +46,7 @@ export function middleware(request: NextRequest) {
     //return redirectToLogin(request)
   //}
   // UCI and FIFA: public demo: no password required
-  const allowedFeds = ['UCI', 'FIFA']
+  const allowedFeds = ['UCI', 'FIFA','WB']
   if (fed && allowedFeds.includes(fed)) {
     return NextResponse.next()
   }
